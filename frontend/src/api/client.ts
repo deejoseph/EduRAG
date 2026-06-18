@@ -2,7 +2,7 @@ import axios from 'axios';
 import { message } from 'antd';
 
 const apiClient = axios.create({
-  baseURL: '/api-proxy',
+  baseURL: '',
   timeout: 120000, // LLM 推理较慢，超时 120 秒
   headers: { 'Content-Type': 'application/json' },
 });
