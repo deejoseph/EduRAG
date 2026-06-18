@@ -441,6 +441,7 @@ def _generate_hot_topics(category: dict) -> list:
 
     # 调用 LLM
     logger.info(f"正在调用LLM生成 [{category['name']}] 的热点话题...")
+    logger.debug(f"系统提示词长度: {len(system_prompt)}, 用户查询长度: {len(user_query)}")
     try:
         response = llm.chat(
             messages=[
@@ -450,15 +451,35 @@ def _generate_hot_topics(category: dict) -> list:
             temperature=0.7,
             num_predict=3072,  # 增加生成长度
         )
-        logger.info(f"LLM响应接收成功，长度: {len(response)}")
+        logger.info(f"LLM响应接收成功，类型: {type(response).__name__}")
+        if isinstance(response, dict):
+            logger.debug(f"响应字典键: {list(response.keys())}")
+        else:
+            logger.debug(f"响应长度: {len(str(response))}")
     except Exception as e:
         logger.error(f"LLM调用失败: {e}", exc_info=True)
         raise
     
     # 解析 JSON 响应
     try:
-        # 尝试提取 JSON 数组
-        content = response.strip()
+        # 检查response是否为字典（Ollama API返回格式）
+        if isinstance(response, dict):
+            # Ollama chat API返回格式: {"message": {"role": "...", "content": "..."}, ...}
+            if 'message' in response and 'content' in response['message']:
+                content = response['message']['content'].strip()
+                logger.info(f"从message.content提取内容成功，长度: {len(content)}")
+            elif 'choices' in response and len(response['choices']) > 0:
+                # OpenAI兼容格式
+                content = response['choices'][0].get('text', '').strip()
+            elif 'content' in response:
+                content = response['content'].strip()
+            else:
+                logger.error(f"无法从字典响应中提取内容，可用键: {list(response.keys())}")
+                logger.error(f"完整响应: {json.dumps(response, ensure_ascii=False)[:500]}")
+                return []
+        else:
+            content = str(response).strip()
+        
         logger.debug(f"LLM原始响应前500字符: {content[:500]}")
         
         # 查找 JSON 数组的开始和结束
@@ -510,7 +531,12 @@ def _generate_hot_topics(category: dict) -> list:
     
     except json.JSONDecodeError as e:
         logger.error(f"JSON解析失败: {e}")
-        logger.error(f"原始响应片段: {response[:1000]}")
+        # 安全地记录响应内容
+        try:
+            response_str = response if isinstance(response, str) else json.dumps(response, ensure_ascii=False)
+            logger.error(f"原始响应片段: {response_str[:1000]}")
+        except Exception:
+            logger.error(f"无法序列化响应: {type(response)}")
         return []
     except Exception as e:
         logger.error(f"处理响应失败: {e}", exc_info=True)
@@ -622,9 +648,20 @@ def generate_custom_prompt():
         num_predict=1024,
     )
     
+    # 正确提取LLM响应内容
+    if isinstance(response, dict):
+        if 'message' in response and 'content' in response['message']:
+            prompt_content = response['message']['content']
+        elif 'choices' in response and len(response['choices']) > 0:
+            prompt_content = response['choices'][0].get('text', '')
+        else:
+            return jsonify({'error': '无法解析LLM响应'}), 500
+    else:
+        prompt_content = str(response)
+    
     return jsonify({
         'success': True,
-        'prompt': response,
+        'prompt': prompt_content,
         'keywords': keywords,
         'essay_type': essay_type,
         'difficulty': difficulty,
