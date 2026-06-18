@@ -429,9 +429,9 @@ const HotTopicsPage: React.FC = () => {
                           <Space wrap>
                             {topic.keywords.slice(0, 3).map((kw, idx) => (
                               <Tag key={idx} style={{ fontSize: 11 }}>{kw}</Tag>
-                          ))}
-                        </Space>
-                      </>
+                            ))}
+                          </Space>
+                        </>
                     }
                   />
                 </Card>
