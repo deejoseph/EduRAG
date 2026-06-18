@@ -12,7 +12,7 @@ import type {
 
 const api = axios.create({
   baseURL: '/hot-topics',
-  timeout: 120000, // LLM 调用可能需要较长时间
+  timeout: 180000, // LLM 调用可能需要较长时间，增加到3分钟
 });
 
 // 获取分类列表

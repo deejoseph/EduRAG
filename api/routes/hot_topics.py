@@ -66,6 +66,151 @@ def _get_rag():
     return current_app.config['edurag']['rag']
 
 
+def _get_fallback_topics(category: dict) -> list:
+    """
+    当LLM不可用时，返回预设的示例热点话题
+    
+    Args:
+        category: 分类信息字典
+    
+    Returns:
+        示例热点话题列表
+    """
+    # 为每个分类准备3个高质量的示例话题
+    fallback_data = {
+        'technology': [
+            {
+                'title': '人工智能与人类创造力的边界',
+                'category': category['name'],
+                'keywords': ['人工智能', '创造力', '人机协作', '科技伦理'],
+                'news_summary': '近年来，AI技术在艺术创作、文学写作等领域取得突破性进展。ChatGPT等生成式AI能够创作诗歌、绘画，引发了关于"AI是否具有创造力"的广泛讨论。如何在拥抱技术的同时保持人类的独特价值，成为值得深思的话题。',
+                'essay_prompt': '阅读下面的材料，根据要求写作。\n\n材料：2024年，一幅由AI生成的画作在国际艺术大赛中获得金奖，引发了激烈争议。支持者认为AI拓展了创作的边界，反对者则担忧这会削弱人类艺术家的价值。与此同时，作家们也在探讨：当AI能够写出动人的故事时，人类作家的意义何在？\n\n其实，工具从来不是创造的终点，而是起点。关键在于我们如何使用它。\n\n以上材料引发了你怎样的联想和思考？请写一篇文章。\n\n要求：选准角度，确定立意，明确文体，自拟标题；不要套作，不得抄袭；不得泄露个人信息；不少于800字。',
+                'writing_angles': [
+                    '从"工具理性"与"价值理性"的角度，探讨技术与人文的平衡',
+                    '从人类独特性出发，分析情感、直觉在创造中的不可替代性',
+                    '从历史维度审视技术革新对传统行业的冲击与机遇',
+                ],
+                'reference_materials': [
+                    '爱因斯坦："想象力比知识更重要"',
+                    '达芬奇既是艺术家也是科学家，体现人文与科技的融合',
+                    '工业革命时期卢德运动的启示：恐惧源于未知，进步需要理解',
+                ],
+                'difficulty': '中等',
+                'relevance_score': 9,
+            },
+            {
+                'title': '数字时代的"慢生活"追求',
+                'category': category['name'],
+                'keywords': ['数字化', '快节奏', '慢生活', '心理健康'],
+                'news_summary': '在5G、短视频、即时通讯主导的今天，"快"似乎成为时代标签。然而，越来越多的年轻人开始倡导"数字断舍离"，尝试远离手机、回归纸质阅读和面对面交流。这种"慢下来"的生活方式，是对技术的反思，还是对人性本真的回归？',
+                'essay_prompt': '阅读下面的材料，根据要求写作。\n\n材料：某中学发起"无手机一周"挑战，起初学生叫苦不迭，但一周后许多人表示感受到了久违的专注和宁静。有人感慨："原来放下手机，世界可以这么清晰。"\n\n在这个万物互联的时代，我们似乎从未如此紧密相连，却又常常感到孤独。"快"与"慢"、"连接"与"独处"，究竟该如何取舍？\n\n请结合材料写一篇文章，体现你的思考。\n\n要求：选准角度，确定立意，明确文体，自拟标题；不要套作，不得抄袭；不少于800字。',
+                'writing_angles': [
+                    '辩证看待技术发展带来的便利与代价',
+                    '从心理学角度分析"注意力经济"对青少年的影响',
+                    '探讨真正的"连接"是什么，如何建立有意义的人际关系',
+                ],
+                'reference_materials': [
+                    '梭罗《瓦尔登湖》：简化生活，回归本真',
+                    '海德格尔："人诗意地栖居"',
+                    '数据显示：现代人平均每天使用手机超过6小时',
+                ],
+                'difficulty': '容易',
+                'relevance_score': 8,
+            },
+            {
+                'title': '算法推荐与信息茧房',
+                'category': category['name'],
+                'keywords': ['算法', '信息茧房', '多元视角', '独立思考'],
+                'news_summary': '短视频平台、新闻资讯APP普遍采用算法推荐机制，为用户推送"感兴趣"的内容。然而，这种个性化服务也可能将人困在"信息茧房"中，只看到自己认同的观点，失去接触多元思想的机会。如何打破茧房，保持开放心态，成为数字公民的重要课题。',
+                'essay_prompt': '阅读下面的材料，根据要求写作。\n\n材料：小明发现自己刷短视频时，系统总是推送同类内容，久而久之，他的观点变得越来越极端。直到有一天，他偶然看到一个不同立场的视频，才意识到自己被困在了"信息茧房"里。\n\n算法本身没有善恶，但它塑造的认知环境却可能影响我们的判断。在信息爆炸的时代，保持独立思考显得尤为重要。\n\n以上材料对你有什么启发？请写一篇文章。\n\n要求：选准角度，确定立意，明确文体，自拟标题；不要套作，不得抄袭；不少于800字。',
+                'writing_angles': [
+                    '从公民素养角度，论述多元信息对社会和谐的重要性',
+                    '分析算法背后的商业逻辑及其对个人自由的影响',
+                    '提出打破信息茧房的具体方法：主动搜索、跨界阅读等',
+                ],
+                'reference_materials': [
+                    '桑斯坦《信息乌托邦》提出"信息茧房"概念',
+                    '柏拉图"洞穴寓言"：走出舒适区才能看到真相',
+                    '某平台推出"反推荐"功能，鼓励用户探索多元内容',
+                ],
+                'difficulty': '较难',
+                'relevance_score': 9,
+            },
+        ],
+        'culture': [
+            {
+                'title': '传统文化的创新表达',
+                'category': category['name'],
+                'keywords': ['传统文化', '创新', '文化自信', '传承'],
+                'news_summary': '从《国家宝藏》到《典籍里的中国》，从故宫文创到汉服复兴，传统文化正以年轻化、时尚化的方式走进大众视野。这种"活化"传承既激发了文化自信，也引发了关于"传统与创新"边界的讨论：如何在创新中保持文化的本真性？',
+                'essay_prompt': '阅读下面的材料，根据要求写作。\n\n材料：河南卫视《唐宫夜宴》运用5G+AR技术，让千年文物"活"起来，收获亿万点赞。但也有学者担忧：过度娱乐化是否会消解传统文化的深度？\n\n真正的传承，不是将文化供奉在高阁，而是让它融入当代生活。关键在于把握"度"——既要创新形式，也要守护内核。\n\n请结合材料写一篇文章，谈谈你对传统文化传承的看法。\n\n要求：选准角度，确定立意，明确文体，自拟标题；不要套作，不得抄袭；不少于800字。',
+                'writing_angles': [
+                    '从"守正创新"的角度，探讨传承与发展的辩证关系',
+                    '分析年轻一代为何热衷传统文化，背后的文化认同需求',
+                    '对比中外文化传承案例，提炼可借鉴的经验',
+                ],
+                'reference_materials': [
+                    '费孝通："各美其美，美人之美，美美与共，天下大同"',
+                    '故宫博物院院长单霁翔：让文物"活"起来的实践',
+                    '日本"酷日本"战略：传统文化现代化输出的成功案例',
+                ],
+                'difficulty': '中等',
+                'relevance_score': 9,
+            },
+        ],
+        'environment': [
+            {
+                'title': '绿色生活方式的选择',
+                'category': category['name'],
+                'keywords': ['环保', '低碳', '可持续', '个人责任'],
+                'news_summary': '碳达峰、碳中和已成为国家战略，但很多人觉得这是政府和企业的责任。事实上，每个人的日常选择——如减少一次性塑料、选择公共交通、节约用电——都在影响着环境。个体行动看似微小，汇聚起来却能产生巨大力量。',
+                'essay_prompt': '阅读下面的材料，根据要求写作。\n\n材料：一位高中生坚持自带水杯、拒绝塑料袋一年，减少了约500个塑料瓶的使用。他说："改变世界，先从改变自己开始。"\n\n有人说："一个人的力量太渺小，做不做都一样。"也有人说："每个人都是环境的守护者。"\n\n对此，你怎么看？请写一篇文章。\n\n要求：选准角度，确定立意，明确文体，自拟标题；不要套作，不得抄袭；不少于800字。',
+                'writing_angles': [
+                    '从"积少成多"的哲理角度，论述个体行动的意义',
+                    '分析消费主义对环境的影响，倡导理性消费',
+                    '从代际公平角度，探讨我们对后代的责任',
+                ],
+                'reference_materials': [
+                    '蕾切尔·卡森《寂静的春天》：环保意识的觉醒',
+                    '"地球一小时"活动：全球数亿人共同参与',
+                    '数据显示：如果每人每天节约1度电，全国一年可节约数千亿度',
+                ],
+                'difficulty': '容易',
+                'relevance_score': 8,
+            },
+        ],
+    }
+    
+    # 返回对应分类的示例数据，如果没有则返回通用示例
+    topics = fallback_data.get(category['id'], [])
+    if not topics:
+        # 通用示例
+        topics = [
+            {
+                'title': f'关注{category["name"]}领域的发展',
+                'category': category['name'],
+                'keywords': category['keywords'][:3],
+                'news_summary': f'当前，{category["name"]}领域正在发生深刻变化，涌现出许多值得关注的现象和趋势。作为新时代的青年，我们应该密切关注这些变化，思考其背后的意义。',
+                'essay_prompt': f'阅读下面的材料，根据要求写作。\n\n材料：近年来，{category["name"]}领域发生了诸多变化，既有令人振奋的进步，也有需要警惕的问题。面对这些变化，不同的人有不同的看法。\n\n有人认为应该积极拥抱变化，有人则主张谨慎对待。\n\n请结合你对{category["name"]}领域的了解，写一篇文章，体现你的思考。\n\n要求：选准角度，确定立意，明确文体，自拟标题；不要套作，不得抄袭；不少于800字。',
+                'writing_angles': [
+                    f'从社会发展的角度分析{category["name"]}领域变化的意义',
+                    '探讨个人应该如何应对这些变化',
+                    '展望未来发展趋势，提出建设性建议',
+                ],
+                'reference_materials': [
+                    '关注相关新闻报道和政策文件',
+                    '查阅专业研究资料',
+                    '采访相关领域的专家或从业者',
+                ],
+                'difficulty': '中等',
+                'relevance_score': 7,
+            },
+        ]
+    
+    logger.info(f"返回降级数据：{len(topics)} 个示例话题")
+    return topics
+
+
 # 热点话题分类
 TOPIC_CATEGORIES = [
     {
@@ -197,12 +342,23 @@ def search_hot_topics():
         
         # 使用 LLM 生成热点话题
         try:
+            logger.info(f"开始生成 [{category['name']}] 分类的热点话题...")
             topics = _generate_hot_topics(category)
-            _save_cache(cat_id, topics)
-            all_topics.extend(topics)
+            if topics:
+                _save_cache(cat_id, topics)
+                all_topics.extend(topics)
+                logger.info(f"[{category['name']}] 成功生成 {len(topics)} 个热点话题")
+            else:
+                logger.warning(f"[{category['name']}] 未生成任何话题，尝试使用降级数据")
+                fallback_topics = _get_fallback_topics(category)
+                all_topics.extend(fallback_topics)
+                logger.info(f"[{category['name']}] 使用降级数据，共 {len(fallback_topics)} 个话题")
         except Exception as e:
-            logger.error(f"生成热点话题失败 [{category['name']}]: {e}")
-            # 返回空列表，继续处理其他分类
+            logger.error(f"生成热点话题失败 [{category['name']}]: {e}", exc_info=True)
+            # 使用降级数据
+            fallback_topics = _get_fallback_topics(category)
+            all_topics.extend(fallback_topics)
+            logger.info(f"[{category['name']}] 异常后使用降级数据，共 {len(fallback_topics)} 个话题")
             continue
     
     return jsonify({
@@ -238,7 +394,22 @@ def _generate_hot_topics(category: dict) -> list:
 - 作文题目符合高考命题风格（材料+要求）
 - 写作角度要有深度和广度
 - 参考素材要具体、有说服力
-- 难度适中，适合高中学生"""
+- 难度适中，适合高中学生
+
+**重要：请严格按照以下JSON格式返回，不要包含任何其他文字：**
+[
+  {
+    "title": "话题标题",
+    "category": "分类名称",
+    "keywords": ["关键词1", "关键词2", "关键词3"],
+    "news_summary": "新闻摘要内容",
+    "essay_prompt": "完整的作文题目材料和求",
+    "writing_angles": ["角度1", "角度2", "角度3"],
+    "reference_materials": ["素材1", "素材2", "素材3"],
+    "difficulty": "中等",
+    "relevance_score": 8
+  }
+]"""
 
     user_query = f"""请分析"{category['name']}"领域的热点话题，并生成高考作文命题预测。
 
@@ -246,70 +417,90 @@ def _generate_hot_topics(category: dict) -> list:
 - 分类名称：{category['name']}
 - 关键词：{', '.join(category['keywords'])}
 
-请为以下3个搜索方向生成热点话题分析：
+请为以下搜索方向生成热点话题分析：
 {chr(10).join(f'- {q}' for q in category['search_queries'])}
 
-请以JSON数组格式返回，每个话题包含以下字段：
-- title: 话题标题（简洁明了）
-- category: 分类名称
-- keywords: 关键词数组（3-5个）
-- news_summary: 相关新闻/现象摘要（100-150字）
-- essay_prompt: 模拟作文题目（完整的材料+要求，300-400字）
-- writing_angles: 写作角度建议数组（3-4个角度，每个角度一句话）
-- reference_materials: 参考素材数组（名人名言、典型案例、数据等，3-4条）
-- difficulty: 难度等级（容易/中等/较难）
-- relevance_score: 与高考的相关度评分（1-10分）
-
-注意：直接返回JSON数组，不要有其他文字说明。"""
+请直接返回JSON数组，确保：
+1. 生成3-5个高质量话题
+2. 所有字段都必须存在
+3. relevance_score范围是1-10
+4. difficulty只能是：容易/中等/较难"""
 
     # 调用 LLM
-    response = llm.chat(
-        messages=[
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': user_query},
-        ],
-        temperature=0.7,
-        num_predict=2048,
-    )
+    logger.info(f"正在调用LLM生成 [{category['name']}] 的热点话题...")
+    try:
+        response = llm.chat(
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_query},
+            ],
+            temperature=0.7,
+            num_predict=3072,  # 增加生成长度
+        )
+        logger.info(f"LLM响应接收成功，长度: {len(response)}")
+    except Exception as e:
+        logger.error(f"LLM调用失败: {e}", exc_info=True)
+        raise
     
     # 解析 JSON 响应
     try:
         # 尝试提取 JSON 数组
         content = response.strip()
+        logger.debug(f"LLM原始响应前500字符: {content[:500]}")
         
         # 查找 JSON 数组的开始和结束
         start_idx = content.find('[')
         end_idx = content.rfind(']')
         
-        if start_idx != -1 and end_idx != -1:
-            json_str = content[start_idx:end_idx + 1]
-            topics = json.loads(json_str)
-            
-            # 验证数据结构
-            validated_topics = []
-            for topic in topics:
-                if isinstance(topic, dict) and 'title' in topic and 'essay_prompt' in topic:
-                    # 添加缺失字段的默认值
-                    topic.setdefault('category', category['name'])
-                    topic.setdefault('keywords', [])
-                    topic.setdefault('news_summary', '')
-                    topic.setdefault('writing_angles', [])
-                    topic.setdefault('reference_materials', [])
-                    topic.setdefault('difficulty', '中等')
-                    topic.setdefault('relevance_score', 5)
-                    validated_topics.append(topic)
-            
-            return validated_topics
-        else:
-            logger.warning(f"未找到有效的JSON数组格式")
+        if start_idx == -1 or end_idx == -1:
+            logger.warning(f"未找到有效的JSON数组格式，响应内容: {content[:200]}...")
             return []
+        
+        json_str = content[start_idx:end_idx + 1]
+        logger.info(f"提取到JSON字符串，长度: {len(json_str)}")
+        
+        topics = json.loads(json_str)
+        logger.info(f"JSON解析成功，共 {len(topics)} 个话题")
+        
+        # 验证数据结构
+        validated_topics = []
+        required_fields = ['title', 'essay_prompt']
+        
+        for i, topic in enumerate(topics):
+            if not isinstance(topic, dict):
+                logger.warning(f"话题 {i} 不是字典类型，跳过")
+                continue
+            
+            # 检查必需字段
+            missing_fields = [f for f in required_fields if f not in topic]
+            if missing_fields:
+                logger.warning(f"话题 {i} 缺少必需字段: {missing_fields}，跳过")
+                continue
+            
+            # 添加缺失字段的默认值
+            topic.setdefault('category', category['name'])
+            topic.setdefault('keywords', [])
+            topic.setdefault('news_summary', '暂无摘要')
+            topic.setdefault('writing_angles', ['从多个角度思考这个话题'])
+            topic.setdefault('reference_materials', ['关注相关新闻和时事报道'])
+            topic.setdefault('difficulty', '中等')
+            
+            # 验证相关度评分
+            score = topic.get('relevance_score', 5)
+            if not isinstance(score, (int, float)) or score < 1 or score > 10:
+                topic['relevance_score'] = 5
+            
+            validated_topics.append(topic)
+        
+        logger.info(f"验证完成，有效话题数: {len(validated_topics)}")
+        return validated_topics
     
     except json.JSONDecodeError as e:
         logger.error(f"JSON解析失败: {e}")
-        logger.debug(f"原始响应: {response[:500]}")
+        logger.error(f"原始响应片段: {response[:1000]}")
         return []
     except Exception as e:
-        logger.error(f"处理响应失败: {e}")
+        logger.error(f"处理响应失败: {e}", exc_info=True)
         return []
 
 

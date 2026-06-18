@@ -51,16 +51,23 @@ const HotTopicsPage: React.FC = () => {
   const handleSearch = async () => {
     setLoading(true);
     try {
+      message.loading('正在分析热点话题，请稍候...', 0);
       const res = await searchHotTopics({
         category_id: selectedCategory,
         use_cache: true,
       });
+      message.destroy();
       setTopics(res.topics);
       if (res.topics.length === 0) {
-        message.info('暂无热点数据，请点击刷新按钮生成');
+        message.warning('暂无热点数据，请点击"刷新缓存"按钮重新生成');
+      } else {
+        message.success(`成功获取 ${res.topics.length} 个热点话题`);
       }
-    } catch (error) {
-      message.error('搜索失败，请重试');
+    } catch (error: any) {
+      message.destroy();
+      const errorMsg = error?.response?.data?.error || error?.message || '搜索失败，请重试';
+      message.error(errorMsg);
+      console.error('搜索热点话题失败:', error);
     } finally {
       setLoading(false);
     }
@@ -70,13 +77,18 @@ const HotTopicsPage: React.FC = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
+      message.loading('正在刷新热点数据，这可能需要几分钟...', 0);
       await refreshCache({
         category_id: selectedCategory,
       });
+      message.destroy();
       message.success('刷新成功');
       handleSearch();
-    } catch (error) {
-      message.error('刷新失败');
+    } catch (error: any) {
+      message.destroy();
+      const errorMsg = error?.response?.data?.error || error?.message || '刷新失败';
+      message.error(errorMsg);
+      console.error('刷新缓存失败:', error);
     } finally {
       setRefreshing(false);
     }
