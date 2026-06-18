@@ -6,10 +6,20 @@
 import os
 import json
 import logging
+import sys
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, current_app
 
+# 配置logger，确保传播到根日志器
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.propagate = True  # 确保日志传播到根日志器
+
+# 同时添加一个直接输出到stderr的handler（作为备用）
+_stderr_handler = logging.StreamHandler(sys.stderr)
+_stderr_handler.setLevel(logging.INFO)
+_stderr_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
+logger.addHandler(_stderr_handler)
 
 hot_topics_bp = Blueprint('hot_topics', __name__)
 
@@ -314,6 +324,10 @@ def search_hot_topics():
         - relevance_score: 相关度评分
     """
     import time
+    import sys
+    
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     
     start_time = time.time()
     data = request.get_json() or {}
@@ -323,6 +337,22 @@ def search_hot_topics():
     
     logger.info(f"收到热点搜索请求: category_id={category_id}, use_cache={use_cache}, force_refresh={force_refresh}")
     
+    # 强制刷新时清空缓存
+    if force_refresh:
+        logger.info("⚡ 强制刷新模式：清空缓存文件")
+        if category_id:
+            cache_file = _cache_path(category_id)
+            if os.path.exists(cache_file):
+                os.remove(cache_file)
+                logger.info(f"✅ 已清空缓存: {category_id}")
+        else:
+            for cat in TOPIC_CATEGORIES:
+                cache_file = _cache_path(cat['id'])
+                if os.path.exists(cache_file):
+                    os.remove(cache_file)
+                    logger.info(f"  - 清空缓存: {cat['id']}")
+            logger.info("✅ 已清空所有分类缓存")
+    
     # 确定要搜索的分类
     if category_id:
         categories = [c for c in TOPIC_CATEGORIES if c['id'] == category_id]
@@ -331,60 +361,94 @@ def search_hot_topics():
     else:
         categories = TOPIC_CATEGORIES
     
-    logger.info(f"将处理 {len(categories)} 个分类")
+    logger.info(f"📋 将处理 {len(categories)} 个分类: {', '.join([c['name'] for c in categories])}")
     
     all_topics = []
+    seen_titles = set()  # 用于去重
     processed_count = 0
     timeout_count = 0
-    max_total_time = 300  # 总超时时间5分钟
+    error_count = 0
+    max_total_time = 180  # 总超时时间减少到3分钟
+    max_per_category_time = 40  # 每个分类最多40秒
     
-    for category in categories:
-        # 检查总耗时
-        elapsed = time.time() - start_time
-        if elapsed > max_total_time:
-            logger.warning(f"总耗时超过{max_total_time}秒，停止处理剩余分类")
-            break
-        
+    def process_category(category: dict, llm_client) -> tuple:
+        """处理单个分类，返回 (category_id, topics, error)"""
         cat_id = category['id']
-        processed_count += 1
-        
-        logger.info(f"[{processed_count}/{len(categories)}] 处理分类: {category['name']}")
-        
-        # 检查缓存
-        cached_topics = None
-        if use_cache and not force_refresh:
-            cached_topics = _load_cache(cat_id)
-            if cached_topics:
-                logger.info(f"使用缓存数据，找到 {len(cached_topics)} 个话题")
-        
-        if cached_topics:
-            all_topics.extend(cached_topics)
-            continue
-        
-        # 使用 LLM 生成热点话题
+        cat_name = category['name']
         try:
-            logger.info(f"调用LLM生成热点话题...")
-            topics = _generate_hot_topics(category)
+            logger.info(f"🔄 [{cat_id}] 开始处理分类: {cat_name}")
+            
+            # 检查缓存（force_refresh时已清空，所以这里直接读取）
+            cached_topics = _load_cache(cat_id) if use_cache else None
+            
+            if cached_topics:
+                logger.info(f"✅ [{cat_id}] 使用缓存数据，找到 {len(cached_topics)} 个话题")
+                return (cat_id, cached_topics, None)
+            
+            logger.info(f"🤖 [{cat_id}] 缓存未命中，调用LLM生成热点话题...")
+            # 调用LLM生成，设置单独超时，传入llm_client
+            topics = _generate_hot_topics_with_timeout(category, max_per_category_time, llm_client)
+            
             if topics:
                 _save_cache(cat_id, topics)
-                all_topics.extend(topics)
-                logger.info(f"成功生成 {len(topics)} 个话题")
+                logger.info(f"✅ [{cat_id}] LLM生成成功，保存 {len(topics)} 个话题到缓存")
+                return (cat_id, topics, None)
             else:
-                logger.warning(f"LLM未返回有效数据，使用降级方案")
+                logger.warning(f"⚠️ [{cat_id}] LLM未返回有效数据，使用降级方案")
                 fallback_topics = _get_fallback_topics(category)
-                all_topics.extend(fallback_topics)
-                logger.info(f"使用降级数据，共 {len(fallback_topics)} 个话题")
+                return (cat_id, fallback_topics, None)
+                
         except Exception as e:
-            timeout_count += 1
-            logger.error(f"生成热点话题失败 [{category['name']}]: {e}", exc_info=True)
-            # 使用降级数据
+            logger.error(f"❌ [{cat_id}] 处理失败: {e}", exc_info=True)
             fallback_topics = _get_fallback_topics(category)
-            all_topics.extend(fallback_topics)
-            logger.info(f"异常后使用降级数据，共 {len(fallback_topics)} 个话题")
-            continue
+            return (cat_id, fallback_topics, str(e))
+    
+    # 获取LLM客户端（在Flask请求上下文中）
+    llm_client = _get_llm()
+    
+    # 使用线程池并行处理（最多3个并发）
+    logger.info(f"🚀 启动并行处理（最大3个并发线程）")
+    results = []
+    completed_count = 0
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_cat = {executor.submit(process_category, cat, llm_client): cat for cat in categories}
+        
+        for future in as_completed(future_to_cat):
+            cat = future_to_cat[future]
+            try:
+                cat_id, topics, error = future.result()
+                results.append((cat_id, topics, error))
+                completed_count += 1
+                
+                elapsed = time.time() - start_time
+                logger.info(f"📊 进度: {completed_count}/{len(categories)} 分类完成，耗时 {elapsed:.1f}秒")
+                
+                if elapsed > max_total_time:
+                    logger.warning(f"⏱️ 总耗时超过{max_total_time}秒，停止处理剩余分类")
+                    break
+            except Exception as e:
+                logger.error(f"❌ 处理分类 {cat['name']} 异常: {e}")
+                error_count += 1
+    
+    # 合并结果并去重
+    logger.info(f"🔍 开始合并和去重结果...")
+    for cat_id, topics, error in results:
+        if error:
+            error_count += 1
+            logger.warning(f"⚠️ [{cat_id}] 处理出错，使用降级数据")
+        else:
+            new_topics = [t for t in topics if t.get('title') not in seen_titles]
+            duplicate_count = len(topics) - len(new_topics)
+            for t in new_topics:
+                seen_titles.add(t.get('title'))
+            all_topics.extend(new_topics)
+            if duplicate_count > 0:
+                logger.info(f"  - [{cat_id}] 新增 {len(new_topics)} 个话题（过滤 {duplicate_count} 个重复）")
+            else:
+                logger.info(f"  - [{cat_id}] 新增 {len(new_topics)} 个话题")
     
     total_elapsed = time.time() - start_time
-    logger.info(f"搜索完成，总共返回 {len(all_topics)} 个话题（耗时 {total_elapsed:.1f}秒，超时 {timeout_count} 个分类）")
+    logger.info(f"✅ 搜索完成！总共返回 {len(all_topics)} 个热点话题（总耗时 {total_elapsed:.1f}秒，错误 {error_count} 个分类）")
     
     return jsonify({
         'success': True,
@@ -395,17 +459,58 @@ def search_hot_topics():
     })
 
 
-def _generate_hot_topics(category: dict) -> list:
+def _generate_hot_topics_with_timeout(category: dict, timeout_seconds: int = 40, llm_client=None) -> list:
+    """
+    带超时控制的热点话题生成
+    
+    Args:
+        category: 分类信息字典
+        timeout_seconds: 超时时间（秒）
+        llm_client: LLM客户端实例
+    
+    Returns:
+        热点话题列表
+    """
+    import signal
+    
+    class TimeoutError(Exception):
+        pass
+    
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"LLM调用超过{timeout_seconds}秒")
+    
+    # Windows不支持signal.alarm，使用threading.Timer
+    if hasattr(signal, 'SIGALRM'):
+        # Unix系统
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(timeout_seconds)
+        try:
+            result = _generate_hot_topics(category, llm_client)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+        return result
+    else:
+        # Windows系统：直接调用，在LLM客户端设置超时
+        return _generate_hot_topics(category, llm_client)
+
+
+def _generate_hot_topics(category: dict, llm_client=None) -> list:
     """
     使用 LLM 生成指定分类的热点话题和命题预测
     
     Args:
         category: 分类信息字典
+        llm_client: LLM客户端实例（可选，不提供则从current_app获取）
     
     Returns:
         热点话题列表
     """
-    llm = _get_llm()
+    # 如果提供了llm_client则使用，否则从Flask上下文获取
+    llm = llm_client if llm_client else _get_llm()
+    
+    # 获取当前日期，让LLM生成更有时代感的命题
+    current_date = datetime.now().strftime('%Y年%m月%d日')
     
     # 构建提示词
     system_prompt = """你是一位资深的高考语文命题研究专家，擅长分析社会热点并预测高考作文命题趋势。
@@ -416,11 +521,13 @@ def _generate_hot_topics(category: dict) -> list:
 3. 为每个话题设计一个模拟的高考作文题目（材料作文形式）
 4. 提供写作角度建议和参考素材
 
-要求：
+**重要要求：**
 - 作文题目符合高考命题风格（材料+要求）
 - 写作角度要有深度和广度
 - 参考素材要具体、有说服力
 - 难度适中，适合高中学生
+- **创新性：请发挥创意，避免生成套路化、模板化的命题**
+- **多样性：每个话题应从不同角度切入，避免雷同**
 
 **重要：请严格按照以下JSON格式返回，不要包含任何其他文字：**
 [
@@ -439,6 +546,8 @@ def _generate_hot_topics(category: dict) -> list:
 
     user_query = f"""请分析"{category['name']}"领域的热点话题，并生成高考作文命题预测。
 
+**当前日期：{current_date}**
+
 分类信息：
 - 分类名称：{category['name']}
 - 关键词：{', '.join(category['keywords'])}
@@ -446,31 +555,40 @@ def _generate_hot_topics(category: dict) -> list:
 请为以下搜索方向生成热点话题分析：
 {chr(10).join(f'- {q}' for q in category['search_queries'])}
 
+**特别要求：**
+- 请结合当前时事和社会发展趋势，生成具有时代特色的命题
+- 避免使用过于常见、套路化的命题角度
+- 每个话题应从不同维度切入（社会现象、个人成长、科技发展、文化传承等）
+- 命题材料应具体、有故事性，能引发学生深入思考
+
 请直接返回JSON数组，确保：
 1. 生成3-5个高质量话题
 2. 所有字段都必须存在
 3. relevance_score范围是1-10
 4. difficulty只能是：容易/中等/较难"""
 
-    # 调用 LLM
-    logger.info(f"正在调用LLM生成 [{category['name']}] 的热点话题...")
+    # 调用 LLM - 优化参数以加快速度
+    logger.info(f"🤖 [{category['name']}] 正在调用LLM生成热点话题（model={llm.model}）...")
     logger.debug(f"系统提示词长度: {len(system_prompt)}, 用户查询长度: {len(user_query)}")
     try:
+        import time as time_module
+        llm_start = time_module.time()
         response = llm.chat(
             messages=[
                 {'role': 'system', 'content': system_prompt},
                 {'role': 'user', 'content': user_query},
             ],
             temperature=0.7,
-            num_predict=3072,  # 增加生成长度
+            num_predict=2048,  # 减少生成长度以加快速度（从3072降到2048）
         )
-        logger.info(f"LLM响应接收成功，类型: {type(response).__name__}")
+        llm_elapsed = time_module.time() - llm_start
+        logger.info(f"✅ [{category['name']}] LLM响应接收成功（耗时 {llm_elapsed:.1f}秒），类型: {type(response).__name__}")
         if isinstance(response, dict):
             logger.debug(f"响应字典键: {list(response.keys())}")
         else:
             logger.debug(f"响应长度: {len(str(response))}")
     except Exception as e:
-        logger.error(f"LLM调用失败: {e}", exc_info=True)
+        logger.error(f"❌ [{category['name']}] LLM调用失败: {e}", exc_info=True)
         raise
     
     # 解析 JSON 响应
@@ -504,10 +622,10 @@ def _generate_hot_topics(category: dict) -> list:
             return []
         
         json_str = content[start_idx:end_idx + 1]
-        logger.info(f"提取到JSON字符串，长度: {len(json_str)}")
+        logger.info(f"📝 [{category['name']}] 提取到JSON字符串，长度: {len(json_str)}")
         
         topics = json.loads(json_str)
-        logger.info(f"JSON解析成功，共 {len(topics)} 个话题")
+        logger.info(f"✅ [{category['name']}] JSON解析成功，共 {len(topics)} 个话题")
         
         # 验证数据结构
         validated_topics = []
@@ -567,28 +685,90 @@ def refresh_cache():
     Returns:
         刷新结果
     """
+    import time
+    
+    start_time = time.time()
     data = request.get_json() or {}
     category_id = data.get('category_id')
     
+    logger.info("=" * 60)
+    logger.info("🔄 收到刷新缓存请求")
+    logger.info("=" * 60)
+    logger.info(f"请求参数: category_id={category_id if category_id else '全部'}")
+    
     if category_id:
         categories = [c for c in TOPIC_CATEGORIES if c['id'] == category_id]
+        if not categories:
+            return jsonify({'error': f'无效的分类ID: {category_id}'}), 400
     else:
         categories = TOPIC_CATEGORIES
     
+    logger.info(f"📋 将刷新 {len(categories)} 个分类: {', '.join([c['name'] for c in categories])}")
+    
+    # 获取LLM客户端
+    llm_client = _get_llm()
+    logger.info(f"🤖 LLM模型: {llm_client.model}")
+    
     refreshed = 0
     errors = []
+    completed_count = 0
     
     for category in categories:
+        cat_start = time.time()
+        cat_id = category['id']
+        cat_name = category['name']
+        
         try:
-            topics = _generate_hot_topics(category)
-            _save_cache(category['id'], topics)
+            logger.info(f"\n{'─' * 50}")
+            logger.info(f"🔄 [{cat_id}] 开始处理分类: {cat_name}")
+            logger.info(f"{'─' * 50}")
+            
+            # 清空该分类的缓存
+            cache_file = _cache_path(cat_id)
+            if os.path.exists(cache_file):
+                os.remove(cache_file)
+                logger.info(f"✅ [{cat_id}] 已清空旧缓存")
+            
+            # 调用LLM生成新热点
+            logger.info(f"🤖 [{cat_id}] 正在调用LLM生成热点话题...")
+            topics = _generate_hot_topics(category, llm_client)
+            
+            cat_elapsed = time.time() - cat_start
+            logger.info(f"✅ [{cat_id}] LLM生成成功（耗时 {cat_elapsed:.1f}秒），共 {len(topics)} 个话题")
+            
+            # 保存到缓存
+            _save_cache(cat_id, topics)
+            logger.info(f"💾 [{cat_id}] 已保存到缓存文件")
+            
             refreshed += 1
+            completed_count += 1
+            total_elapsed = time.time() - start_time
+            
+            logger.info(f"📊 进度: {completed_count}/{len(categories)} 分类完成，总耗时 {total_elapsed:.1f}秒")
+            
         except Exception as e:
+            error_elapsed = time.time() - cat_start
+            logger.error(f"❌ [{cat_id}] 刷新失败（耗时 {error_elapsed:.1f}秒）: {e}", exc_info=True)
             errors.append(f"{category['name']}: {str(e)}")
+    
+    total_elapsed = time.time() - start_time
+    logger.info("\n" + "=" * 60)
+    logger.info(f"✅ 刷新完成！")
+    logger.info(f"   - 成功: {refreshed} 个分类")
+    logger.info(f"   - 失败: {len(errors)} 个分类")
+    logger.info(f"   - 总耗时: {total_elapsed:.1f}秒")
+    logger.info("=" * 60)
+    
+    if errors:
+        logger.warning(f"⚠️ 错误详情:")
+        for err in errors:
+            logger.warning(f"   - {err}")
     
     return jsonify({
         'success': True,
         'refreshed': refreshed,
+        'total_categories': len(categories),
+        'elapsed_seconds': round(total_elapsed, 2),
         'errors': errors,
     })
 

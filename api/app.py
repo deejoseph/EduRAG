@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import logging
 import yaml
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from core.embedding import EmbeddingModel
@@ -81,6 +81,8 @@ def create_app(config: dict = None) -> Flask:
         temperature=ollama_cfg.get('temperature', 0.7),
         num_predict=ollama_cfg.get('num_predict', 1024),
     )
+    
+    logger.info(f"LLM模型配置: {llm.model} (从配置文件读取: {ollama_cfg.get('model')})")
 
     # 初始化重排序器（可选）
     reranker_cfg = config.get('reranker', {})
@@ -145,17 +147,143 @@ def create_app(config: dict = None) -> Flask:
             'collection_docs': db_count,
         })
 
+    # 获取当前LLM模型配置和可用模型列表
+    @app.route('/system/model', methods=['GET'])
+    def get_model():
+        """获取当前LLM模型配置和Ollama可用模型"""
+        try:
+            # 从Ollama获取实际安装的模型列表
+            installed_models = llm._get_installed_models()
+            
+            # 为已知模型添加友好标签
+            model_labels = {
+                'gemma3:4b': 'Gemma 3 4B (快速)',
+                'gemma3:12b': 'Gemma 3 12B (平衡)',
+                'qwen2.5:7b': 'Qwen 2.5 7B (中文强)',
+                'qwen3:8b': 'Qwen 3 8B (质量高)',
+                'qwen2.5:14b': 'Qwen 2.5 14B (更强)',
+                'llama3.2:3b': 'Llama 3.2 3B (轻量)',
+                'llama3.1:8b': 'Llama 3.1 8B (通用)',
+            }
+            
+            # 构建可用模型列表
+            available_models = []
+            for model_name in installed_models:
+                label = model_labels.get(model_name, model_name)
+                available_models.append({
+                    'value': model_name,
+                    'label': label
+                })
+            
+            # 如果没有检测到模型，提供默认推荐
+            if not available_models:
+                available_models = [
+                    {'value': 'gemma3:4b', 'label': 'Gemma 3 4B (快速)'},
+                    {'value': 'qwen2.5:7b', 'label': 'Qwen 2.5 7B (中文强)'},
+                    {'value': 'qwen3:8b', 'label': 'Qwen 3 8B (质量高)'},
+                ]
+            
+            return jsonify({
+                'success': True,
+                'model': llm.model,
+                'available_models': available_models
+            })
+        except Exception as e:
+            logger.error(f"获取模型列表失败: {e}")
+            # 降级到默认列表
+            return jsonify({
+                'success': True,
+                'model': llm.model,
+                'available_models': [
+                    {'value': 'gemma3:4b', 'label': 'Gemma 3 4B (快速)'},
+                    {'value': 'qwen2.5:7b', 'label': 'Qwen 2.5 7B (中文强)'},
+                    {'value': 'qwen3:8b', 'label': 'Qwen 3 8B (质量高)'},
+                ]
+            })
+
+    # 切换LLM模型
+    @app.route('/system/model', methods=['POST'])
+    def set_model():
+        """切换LLM模型"""
+        try:
+            data = request.get_json() or {}
+            new_model = data.get('model')
+
+            if not new_model:
+                return jsonify({'success': False, 'error': '请指定模型名称'}), 400
+
+            # 验证模型是否存在于Ollama中
+            installed_models = llm._get_installed_models()
+            if new_model not in installed_models:
+                logger.warning(f"模型 {new_model} 未安装，将尝试自动拉取")
+
+            # 更新全局llm对象的model
+            llm.model = new_model
+
+            # 同时更新config
+            config['ollama']['model'] = new_model
+
+            logger.info(f"模型已切换为: {new_model}")
+            return jsonify({
+                'success': True,
+                'model': new_model,
+                'message': f'模型已切换为 {new_model}'
+            })
+        except Exception as e:
+            logger.error(f"切换模型失败: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'error': f'切换模型失败: {str(e)}'
+            }), 500
+
     logger.info("EduRAG API 服务初始化完成")
     return app
 
 
 def main():
     """启动 API 服务"""
-    # 配置日志
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    )
+    # 配置日志 - 禁用缓冲，确保实时输出
+    import sys
+    
+    # 设置环境变量禁用Python缓冲
+    os.environ['PYTHONUNBUFFERED'] = '1'
+    
+    # 创建自定义Handler，确保每次写入后立即刷新
+    class FlushHandler(logging.StreamHandler):
+        def emit(self, record):
+            super().emit(record)
+            self.flush()
+    
+    # 配置根日志器
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # 清除现有handler
+    root_logger.handlers.clear()
+    
+    # 添加自定义handler（使用stderr，因为Werkzeug不会重定向stderr）
+    handler = FlushHandler(sys.stderr)
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    handler.setFormatter(formatter)
+    root_logger.addHandler(handler)
+    
+    # 特别配置werkzeug日志器
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.INFO)
+    werkzeug_logger.propagate = True  # 传播到根日志器
+    
+    # 确保api.routes.hot_topics的logger也传播到根日志器
+    hot_topics_logger = logging.getLogger('api.routes.hot_topics')
+    hot_topics_logger.setLevel(logging.INFO)
+    hot_topics_logger.propagate = True
+    
+    logger = logging.getLogger(__name__)
+    logger.info("=" * 60)
+    logger.info("EduRAG Backend 启动")
+    logger.info(f"Python: {sys.executable}")
+    logger.info(f"版本: {sys.version}")
+    logger.info("=" * 60)
 
     config = load_config()
     api_cfg = config.get('api', {})
@@ -171,8 +299,19 @@ def main():
     print(f"  地址: http://{host}:{port}")
     print(f"  调试: {'开启' if debug else '关闭'}")
     print(f"{'='*50}\n")
+    
+    # 确保日志立即刷新
+    sys.stdout.flush()
+    sys.stderr.flush()
 
-    app.run(host=host, port=port, debug=debug)
+    # 配置Werkzeug日志，确保实时输出
+    import werkzeug.serving
+    werkzeug.serving.WSGIRequestHandler.log = lambda self, type, message, *args: (
+        logging.getLogger('werkzeug').info(message % args)
+    )
+    
+    # 禁用Werkzeug的reloader以避免双重进程
+    app.run(host=host, port=port, debug=debug, use_reloader=False)
 
 
 if __name__ == '__main__':
