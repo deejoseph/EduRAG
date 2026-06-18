@@ -432,11 +432,12 @@ const HotTopicsPage: React.FC = () => {
                             ))}
                           </Space>
                         </>
-                    }
-                  />
-                </Card>
-              </Col>
-            ))}
+                      }
+                    />
+                  </Card>
+                </Col>
+              );
+            })}
           </Row>
         )}
       </Spin>
