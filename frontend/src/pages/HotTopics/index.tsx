@@ -50,23 +50,56 @@ const HotTopicsPage: React.FC = () => {
   // 搜索热点话题
   const handleSearch = async () => {
     setLoading(true);
+    
+    // 显示初始提示
+    message.info('🔍 开始分析热点话题...', 2);
+    
     try {
-      message.loading('正在分析热点话题，请稍候...', 0);
+      // 显示加载状态，不自动关闭
+      message.loading('正在连接后端服务...', 0);
+      
+      const startTime = Date.now();
+      
+      // 定期更新进度提示
+      const progressTimer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        if (elapsed < 10) {
+          message.destroy();
+          message.loading(`正在分析社会热点... (${elapsed}秒)`, 0);
+        } else if (elapsed < 30) {
+          message.destroy();
+          message.loading(`LLM正在生成命题预测... (${elapsed}秒)`, 0);
+        } else {
+          message.destroy();
+          message.loading(`仍在处理中，请稍候... (${elapsed}秒)`, 0);
+        }
+      }, 5000);
+      
       const res = await searchHotTopics({
         category_id: selectedCategory,
         use_cache: true,
       });
+      
+      // 清除定时器
+      clearInterval(progressTimer);
       message.destroy();
+      
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+      
       setTopics(res.topics);
+      
       if (res.topics.length === 0) {
-        message.warning('暂无热点数据，请点击"刷新缓存"按钮重新生成');
+        message.warning('暂无热点数据，请点击"刷新缓存"按钮重新生成', 3);
       } else {
-        message.success(`成功获取 ${res.topics.length} 个热点话题`);
+        message.success(
+          `✅ 成功获取 ${res.topics.length} 个热点话题（耗时 ${elapsedTime} 秒）`, 
+          3
+        );
       }
     } catch (error: any) {
       message.destroy();
       const errorMsg = error?.response?.data?.error || error?.message || '搜索失败，请重试';
-      message.error(errorMsg);
+      message.error(`❌ ${errorMsg}`, 5);
       console.error('搜索热点话题失败:', error);
     } finally {
       setLoading(false);
@@ -76,18 +109,37 @@ const HotTopicsPage: React.FC = () => {
   // 刷新缓存
   const handleRefresh = async () => {
     setRefreshing(true);
+    
+    message.info('🔄 开始刷新热点数据...', 2);
+    
     try {
-      message.loading('正在刷新热点数据，这可能需要几分钟...', 0);
+      message.loading('正在清除旧缓存...', 0);
+      
+      const startTime = Date.now();
+      
+      // 定期更新进度
+      const progressTimer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        message.destroy();
+        message.loading(`正在重新生成热点数据... (${elapsed}秒)`, 0);
+      }, 3000);
+      
       await refreshCache({
         category_id: selectedCategory,
       });
+      
+      clearInterval(progressTimer);
       message.destroy();
-      message.success('刷新成功');
+      
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+      message.success(`✅ 刷新成功（耗时 ${elapsedTime} 秒）`, 2);
+      
+      // 刷新后自动重新搜索
       handleSearch();
     } catch (error: any) {
       message.destroy();
       const errorMsg = error?.response?.data?.error || error?.message || '刷新失败';
-      message.error(errorMsg);
+      message.error(`❌ ${errorMsg}`, 5);
       console.error('刷新缓存失败:', error);
     } finally {
       setRefreshing(false);
@@ -205,6 +257,29 @@ const HotTopicsPage: React.FC = () => {
             自定义命题
           </Button>
         </Space>
+        
+        {/* 进度提示 */}
+        {(loading || refreshing) && (
+          <div style={{ marginTop: 16, padding: 12, background: '#f0f9ff', borderRadius: 8, border: '1px solid #91caff' }}>
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Spin size="small" />
+                <Text strong style={{ color: '#0958d9' }}>
+                  {loading ? '正在搜索热点话题...' : '正在刷新缓存...'}
+                </Text>
+              </div>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                💡 系统正在执行以下操作：
+              </Text>
+              <ul style={{ margin: 0, paddingLeft: 20, fontSize: 12, color: '#666' }}>
+                <li>分析当前社会热点和教育动态</li>
+                <li>调用AI模型生成高考作文命题预测</li>
+                <li>整理写作角度和参考素材</li>
+                <li>预计耗时：使用缓存约5-10秒，重新生成约1-3分钟</li>
+              </ul>
+            </Space>
+          </div>
+        )}
       </Card>
 
       {/* 热点话题列表 */}

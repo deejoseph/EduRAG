@@ -318,6 +318,8 @@ def search_hot_topics():
     use_cache = data.get('use_cache', True)
     force_refresh = data.get('force_refresh', False)
     
+    logger.info(f"收到热点搜索请求: category_id={category_id}, use_cache={use_cache}, force_refresh={force_refresh}")
+    
     # 确定要搜索的分类
     if category_id:
         categories = [c for c in TOPIC_CATEGORIES if c['id'] == category_id]
@@ -326,15 +328,23 @@ def search_hot_topics():
     else:
         categories = TOPIC_CATEGORIES
     
+    logger.info(f"将处理 {len(categories)} 个分类")
+    
     all_topics = []
+    processed_count = 0
     
     for category in categories:
         cat_id = category['id']
+        processed_count += 1
+        
+        logger.info(f"[{processed_count}/{len(categories)}] 处理分类: {category['name']}")
         
         # 检查缓存
         cached_topics = None
         if use_cache and not force_refresh:
             cached_topics = _load_cache(cat_id)
+            if cached_topics:
+                logger.info(f"使用缓存数据，找到 {len(cached_topics)} 个话题")
         
         if cached_topics:
             all_topics.extend(cached_topics)
@@ -342,30 +352,33 @@ def search_hot_topics():
         
         # 使用 LLM 生成热点话题
         try:
-            logger.info(f"开始生成 [{category['name']}] 分类的热点话题...")
+            logger.info(f"调用LLM生成热点话题...")
             topics = _generate_hot_topics(category)
             if topics:
                 _save_cache(cat_id, topics)
                 all_topics.extend(topics)
-                logger.info(f"[{category['name']}] 成功生成 {len(topics)} 个热点话题")
+                logger.info(f"成功生成 {len(topics)} 个话题")
             else:
-                logger.warning(f"[{category['name']}] 未生成任何话题，尝试使用降级数据")
+                logger.warning(f"LLM未返回有效数据，使用降级方案")
                 fallback_topics = _get_fallback_topics(category)
                 all_topics.extend(fallback_topics)
-                logger.info(f"[{category['name']}] 使用降级数据，共 {len(fallback_topics)} 个话题")
+                logger.info(f"使用降级数据，共 {len(fallback_topics)} 个话题")
         except Exception as e:
             logger.error(f"生成热点话题失败 [{category['name']}]: {e}", exc_info=True)
             # 使用降级数据
             fallback_topics = _get_fallback_topics(category)
             all_topics.extend(fallback_topics)
-            logger.info(f"[{category['name']}] 异常后使用降级数据，共 {len(fallback_topics)} 个话题")
+            logger.info(f"异常后使用降级数据，共 {len(fallback_topics)} 个话题")
             continue
+    
+    logger.info(f"搜索完成，总共返回 {len(all_topics)} 个话题")
     
     return jsonify({
         'success': True,
         'topics': all_topics,
         'total': len(all_topics),
         'generated_at': datetime.now().isoformat(),
+        'message': f'成功生成 {len(all_topics)} 个热点话题'
     })
 
 
