@@ -777,22 +777,48 @@ def remove_favorite(topic_title):
 @hot_topics_bp.route('/favorites', methods=['GET'])
 def get_favorites():
     """
-    获取收藏的热点话题列表
+    获取收藏的热点话题列表（题库）
     
     Query Params:
         sort_by: 排序方式（created_at/title/relevance_score）
     
     Returns:
-        收藏列表
+        收藏列表，包含每个题目在作品集中的练习次数
     """
+    import glob
+    
     favorites = _load_favorites()
     sort_by = request.args.get('sort_by', 'favorited_at')
+    
+    # 统计每个题目在作品集中的练习次数
+    portfolio_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'portfolio')
+    practice_count_map = {}
+    
+    if os.path.exists(portfolio_dir):
+        # 遍历所有作品集文件
+        for file_path in glob.glob(os.path.join(portfolio_dir, '*.json')):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    portfolio_item = json.load(f)
+                    # 检查是否有topic_title字段
+                    topic_title = portfolio_item.get('topic_title', '')
+                    if topic_title:
+                        practice_count_map[topic_title] = practice_count_map.get(topic_title, 0) + 1
+            except Exception:
+                continue
+    
+    # 添加练习次数到每个收藏
+    for fav in favorites:
+        title = fav.get('title', '')
+        fav['practice_count'] = practice_count_map.get(title, 0)
     
     # 排序
     if sort_by == 'title':
         favorites.sort(key=lambda x: x.get('title', ''))
     elif sort_by == 'relevance_score':
         favorites.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+    elif sort_by == 'practice_count':
+        favorites.sort(key=lambda x: x.get('practice_count', 0), reverse=True)
     else:  # favorited_at
         favorites.sort(key=lambda x: x.get('favorited_at', ''), reverse=True)
     

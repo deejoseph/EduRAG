@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
-import { Steps, Card, Button, Space, Form, Input, Select, Typography, Tag, message } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Steps, Card, Button, Space, Form, Input, Select, Typography, Tag, message, Badge } from 'antd';
 import {
   ThunderboltOutlined,
   ClockCircleOutlined,
   RocketOutlined,
   ReloadOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import { usePracticeStore } from '../../store/practiceStore';
 import { practiceApi } from '../../api/practice';
+import { getFavorites } from '../../api/hotTopics';
 import { TOPIC_TYPES, GRADE_LEVELS, DEFAULT_TOPIC_TYPE, DEFAULT_GRADE_LEVEL } from '../../constants';
 import TopicPhase from './TopicPhase';
 import OutlinePhase from './OutlinePhase';
@@ -41,6 +43,25 @@ const PracticePage: React.FC = () => {
 
   const [form] = Form.useForm();
   const [starting, setStarting] = useState(false);
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  
+  // 加载题库列表
+  useEffect(() => {
+    loadFavorites();
+  }, []);
+  
+  const loadFavorites = async () => {
+    setFavoritesLoading(true);
+    try {
+      const res = await getFavorites('practice_count');
+      setFavorites(res.topics);
+    } catch (error) {
+      console.error('加载题库失败:', error);
+    } finally {
+      setFavoritesLoading(false);
+    }
+  };
 
   const handleStart = async (values: { topic: string; topic_type: string; grade_level: string }) => {
     if (!values.topic.trim()) {
@@ -96,6 +117,56 @@ const PracticePage: React.FC = () => {
               grade_level: DEFAULT_GRADE_LEVEL,
             }}
           >
+            {/* 从题库选择 */}
+            <Card 
+              title={
+                <Space size="small">
+                  <BookOutlined />
+                  <span>从题库选择题目</span>
+                  {favorites.length > 0 && (
+                    <Badge count={favorites.length} style={{ backgroundColor: '#52c41a' }} />
+                  )}
+                </Space>
+              }
+              size="small"
+              style={{ marginBottom: 16 }}
+              loading={favoritesLoading}
+            >
+              {favorites.length === 0 ? (
+                <Text type="secondary">暂无收藏的题目，请先到"命题热点"页面收藏感兴趣的话题</Text>
+              ) : (
+                <Select
+                  placeholder="选择要练习的题目..."
+                  style={{ width: '100%' }}
+                  onChange={(value) => {
+                    const selected = favorites.find(f => f.title === value);
+                    if (selected) {
+                      form.setFieldsValue({ 
+                        topic: selected.essay_prompt || selected.title,
+                        topic_type: selected.topic_type || DEFAULT_TOPIC_TYPE,
+                      });
+                      message.success(`已选择：${selected.title}`);
+                    }
+                  }}
+                  options={favorites.map(f => ({
+                    label: (
+                      <Space direction="vertical" size={0} style={{ width: '100%' }}>
+                        <Text strong>{f.title}</Text>
+                        <Space size="small">
+                          <Badge 
+                            count={`已练习${f.practice_count || 0}次`} 
+                            style={{ backgroundColor: f.practice_count > 0 ? '#faad14' : '#d9d9d9' }} 
+                          />
+                          <Text type="secondary" style={{ fontSize: 12 }}>{f.category}</Text>
+                        </Space>
+                      </Space>
+                    ),
+                    value: f.title,
+                  }))}
+                />
+              )}
+            </Card>
+            
             <Form.Item
               name="topic"
               label="作文题目"

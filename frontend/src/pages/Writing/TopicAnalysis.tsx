@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
-import { Form, Input, Select, Button, message } from 'antd';
-import { BulbOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Form, Input, Select, Button, message, Card, Badge, Space, Typography } from 'antd';
+import { BulbOutlined, StarOutlined, BookOutlined } from '@ant-design/icons';
 import { useWritingStore } from '../../store/writingStore';
 import { writingApi } from '../../api/writing';
+import { getFavorites } from '../../api/hotTopics';
 import { TOPIC_TYPES, GRADE_LEVELS } from '../../constants';
 import AnswerDisplay from '../../components/writing/AnswerDisplay';
 import ReferencePanel from '../../components/writing/ReferencePanel';
 import LoadingOverlay from '../../components/common/LoadingOverlay';
+
+const { Text } = Typography;
 
 const TopicAnalysis: React.FC = () => {
   const {
@@ -15,6 +18,31 @@ const TopicAnalysis: React.FC = () => {
   } = useWritingStore();
 
   const [loading, setLoading] = useState(false);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [favorites, setFavorites] = useState<any[]>([]);
+  
+  // 加载题库列表
+  useEffect(() => {
+    loadFavorites();
+  }, []);
+  
+  const loadFavorites = async () => {
+    setFavoritesLoading(true);
+    try {
+      const res = await getFavorites('practice_count');
+      setFavorites(res.topics);
+    } catch (error) {
+      console.error('加载题库失败:', error);
+    } finally {
+      setFavoritesLoading(false);
+    }
+  };
+  
+  // 选择题目
+  const handleSelectTopic = (topicData: any) => {
+    setTopic(topicData.essay_prompt || topicData.title);
+    message.success(`已选择题目：${topicData.title}`);
+  };
 
   const handleSubmit = async () => {
     if (!topic.trim()) {
@@ -40,6 +68,47 @@ const TopicAnalysis: React.FC = () => {
 
   return (
     <LoadingOverlay loading={loading}>
+      {/* 从题库选择 */}
+      <Card 
+        title={
+          <Space>
+            <BookOutlined />
+            <span>从题库选择题目</span>
+            {favorites.length > 0 && (
+              <Badge count={favorites.length} style={{ backgroundColor: '#52c41a' }} />
+            )}
+          </Space>
+        }
+        size="small"
+        style={{ marginBottom: 24 }}
+        loading={favoritesLoading}
+      >
+        {favorites.length === 0 ? (
+          <Text type="secondary">暂无收藏的题目，请先到"命题热点"页面收藏感兴趣的话题</Text>
+        ) : (
+          <Select
+            placeholder="选择要练习的题目..."
+            style={{ width: '100%' }}
+            onChange={(value) => {
+              const selected = favorites.find(f => f.title === value);
+              if (selected) handleSelectTopic(selected);
+            }}
+            options={favorites.map(f => ({
+              label: (
+                <Space direction="vertical" size={0}>
+                  <Text strong>{f.title}</Text>
+                  <Space size="small">
+                    <Badge count={`已练习${f.practice_count || 0}次`} style={{ backgroundColor: f.practice_count > 0 ? '#faad14' : '#d9d9d9' }} />
+                    <Text type="secondary" style={{ fontSize: 12 }}>{f.category}</Text>
+                  </Space>
+                </Space>
+              ),
+              value: f.title,
+            }))}
+          />
+        )}
+      </Card>
+      
       <Form layout="vertical">
         <Form.Item label="作文题目" required>
           <Input.TextArea

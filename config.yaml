@@ -1,7 +1,7 @@
 # Ollama 配置
 ollama:
   base_url: "http://localhost:11434"
-  model: "qwen3:8b"          # 可选 qwen2.5:7b / deepseek-r1:8b
+  model: "gemma3:4b"          # 可选 gemma3:4b(快速) / qwen2.5:7b(中文强) / qwen3:8b(质量高但慢)
   temperature: 0.7
   num_predict: 1024
 
