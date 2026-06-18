@@ -53,3 +53,33 @@ export const generateCustomPrompt = async (
   const response = await api.post('/prompt-generator', data);
   return response.data;
 };
+
+// 收藏热点话题
+export const favoriteTopic = async (topic: any): Promise<{
+  success: boolean;
+  message: string;
+  total: number;
+}> => {
+  const response = await api.post('/favorite', { topic });
+  return response.data;
+};
+
+// 取消收藏
+export const unfavoriteTopic = async (topicTitle: string): Promise<{
+  success: boolean;
+  message: string;
+  total: number;
+}> => {
+  const response = await api.delete(`/favorite/${encodeURIComponent(topicTitle)}`);
+  return response.data;
+};
+
+// 获取收藏列表
+export const getFavorites = async (sortBy: string = 'favorited_at'): Promise<{
+  success: boolean;
+  topics: any[];
+  total: number;
+}> => {
+  const response = await api.get(`/favorites?sort_by=${sortBy}`);
+  return response.data;
+};

@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import {
   Card, Row, Col, Tag, Button, Select, Space, Typography, Spin,
-  message, Divider, Collapse, Modal, Input, Alert, Badge, Empty,
+  message, Divider, Collapse, Modal, Input, Alert, Badge, Empty, Popconfirm,
 } from 'antd';
 import {
   FireOutlined, ReloadOutlined, BulbOutlined,
-  SearchOutlined, StarOutlined,
+  SearchOutlined, StarOutlined, StarFilled, DeleteOutlined,
 } from '@ant-design/icons';
 import type { TopicCategory, HotTopic } from '../../types/hotTopics';
 import {
   getCategories, searchHotTopics, refreshCache, generateCustomPrompt,
+  favoriteTopic, unfavoriteTopic, getFavorites,
 } from '../../api/hotTopics';
 import MarkdownRenderer from '../../components/common/MarkdownRenderer';
 
@@ -22,6 +23,11 @@ const HotTopicsPage: React.FC = () => {
   const [topics, setTopics] = useState<HotTopic[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [refreshing, setRefreshing] = useState(false);
+  
+  // 收藏相关状态
+  const [favorites, setFavorites] = useState<HotTopic[]>([]);
+  const [favoritedTitles, setFavoritedTitles] = useState<Set<string>>(new Set());
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   // 自定义命题弹窗
   const [promptModalVisible, setPromptModalVisible] = useState(false);
@@ -32,6 +38,21 @@ const HotTopicsPage: React.FC = () => {
   // 话题详情弹窗
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<HotTopic | null>(null);
+  
+  // 加载收藏列表
+  useEffect(() => {
+    loadFavorites();
+  }, []);
+  
+  const loadFavorites = async () => {
+    try {
+      const res = await getFavorites();
+      setFavorites(res.topics);
+      setFavoritedTitles(new Set(res.topics.map(t => t.title)));
+    } catch (error) {
+      console.error('加载收藏失败:', error);
+    }
+  };
 
   // 加载分类
   useEffect(() => {
@@ -191,6 +212,38 @@ const HotTopicsPage: React.FC = () => {
     setSelectedTopic(topic);
     setDetailVisible(true);
   };
+  
+  // 收藏/取消收藏
+  const handleToggleFavorite = async (topic: HotTopic) => {
+    const isFavorited = favoritedTitles.has(topic.title);
+    
+    try {
+      if (isFavorited) {
+        await unfavoriteTopic(topic.title);
+        message.success('已取消收藏');
+      } else {
+        await favoriteTopic(topic);
+        message.success('已添加到题库');
+      }
+      
+      // 重新加载收藏列表
+      await loadFavorites();
+    } catch (error: any) {
+      if (error.response?.status === 409) {
+        message.warning('该话题已在收藏中');
+      } else {
+        message.error('操作失败，请重试');
+      }
+    }
+  };
+  
+  // 获取当前显示的话题列表
+  const getDisplayedTopics = () => {
+    if (showFavoritesOnly) {
+      return favorites;
+    }
+    return topics;
+  };
 
   // 获取难度标签颜色
   const getDifficultyColor = (difficulty: string) => {
@@ -273,6 +326,14 @@ const HotTopicsPage: React.FC = () => {
           >
             刷新缓存
           </Button>
+          
+          <Button
+            icon={<StarFilled />}
+            type={showFavoritesOnly ? 'primary' : 'default'}
+            onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          >
+            我的题库 ({favorites.length})
+          </Button>
 
           <Button
             icon={<BulbOutlined />}
@@ -308,44 +369,66 @@ const HotTopicsPage: React.FC = () => {
 
       {/* 热点话题列表 */}
       <Spin spinning={loading}>
-        {topics.length === 0 ? (
+        {getDisplayedTopics().length === 0 ? (
           <Card>
             <Empty
-              description="点击&quot;搜索热点&quot;按钮开始分析"
+              description={showFavoritesOnly ? '暂无收藏的话题，点击话题卡片上的星号图标添加到题库' : '点击"搜索热点"按钮开始分析'}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           </Card>
         ) : (
           <Row gutter={[16, 16]}>
-            {topics.map((topic, index) => (
-              <Col xs={24} sm={12} lg={8} key={index}>
-                <Card
-                  hoverable
-                  onClick={() => handleViewDetail(topic)}
-                  extra={
-                    <Badge count={topic.relevance_score} style={{ backgroundColor: topic.relevance_score >= 7 ? '#52c41a' : '#faad14' }} overflowCount={10} />
-                  }
-                >
-                  <Card.Meta
-                    title={
-                      <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                        <Text strong>{topic.title}</Text>
-                        <Space wrap>
-                          <Tag color="blue">{topic.category}</Tag>
-                          <Tag color={getDifficultyColor(topic.difficulty)}>
-                            {topic.difficulty}
-                          </Tag>
-                        </Space>
+            {getDisplayedTopics().map((topic, index) => {
+              const isFavorited = favoritedTitles.has(topic.title);
+              
+              return (
+                <Col xs={24} sm={12} lg={8} key={index}>
+                  <Card
+                    hoverable
+                    onClick={() => handleViewDetail(topic)}
+                    extra={
+                      <Space size="small">
+                        <Badge count={topic.relevance_score} style={{ backgroundColor: topic.relevance_score >= 7 ? '#52c41a' : '#faad14' }} overflowCount={10} />
+                        <Popconfirm
+                          title={isFavorited ? "确定取消收藏？" : "添加到题库？"}
+                          onConfirm={(e) => {
+                            e?.stopPropagation();
+                            handleToggleFavorite(topic);
+                          }}
+                          okText="确定"
+                          cancelText="取消"
+                        >
+                          <Button
+                            type={isFavorited ? 'primary' : 'default'}
+                            size="small"
+                            icon={isFavorited ? <StarFilled /> : <StarOutlined />}
+                            onClick={(e) => e.stopPropagation()}
+                            title={isFavorited ? '取消收藏' : '添加到题库'}
+                          />
+                        </Popconfirm>
                       </Space>
                     }
-                    description={
-                      <>
-                        <Paragraph ellipsis={{ rows: 3 }} style={{ fontSize: 13 }}>
-                          {topic.news_summary}
-                        </Paragraph>
-                        <Space wrap>
-                          {topic.keywords.slice(0, 3).map((kw, idx) => (
-                            <Tag key={idx} style={{ fontSize: 11 }}>{kw}</Tag>
+                  >
+                    <Card.Meta
+                      title={
+                        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                          <Text strong>{topic.title}</Text>
+                          <Space wrap>
+                            <Tag color="blue">{topic.category}</Tag>
+                            <Tag color={getDifficultyColor(topic.difficulty)}>
+                              {topic.difficulty}
+                            </Tag>
+                          </Space>
+                        </Space>
+                      }
+                      description={
+                        <>
+                          <Paragraph ellipsis={{ rows: 3 }} style={{ fontSize: 13 }}>
+                            {topic.news_summary}
+                          </Paragraph>
+                          <Space wrap>
+                            {topic.keywords.slice(0, 3).map((kw, idx) => (
+                              <Tag key={idx} style={{ fontSize: 11 }}>{kw}</Tag>
                           ))}
                         </Space>
                       </>

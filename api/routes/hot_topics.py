@@ -679,3 +679,125 @@ def generate_custom_prompt():
         'essay_type': essay_type,
         'difficulty': difficulty,
     })
+
+
+# 收藏文件路径
+FAVORITES_FILE = os.path.join(
+    os.path.dirname(__file__), '..', '..', 'data', 'hot_topics_favorites.json'
+)
+
+
+def _load_favorites() -> list:
+    """加载收藏列表"""
+    if not os.path.exists(FAVORITES_FILE):
+        return []
+    try:
+        with open(FAVORITES_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _save_favorites(favorites: list):
+    """保存收藏列表"""
+    os.makedirs(os.path.dirname(FAVORITES_FILE), exist_ok=True)
+    with open(FAVORITES_FILE, 'w', encoding='utf-8') as f:
+        json.dump(favorites, f, ensure_ascii=False, indent=2)
+
+
+@hot_topics_bp.route('/favorite', methods=['POST'])
+def add_favorite():
+    """
+    收藏热点话题
+    
+    Request Body:
+        topic: 话题对象（完整的话题数据）
+    
+    Returns:
+        收藏结果
+    """
+    data = request.get_json() or {}
+    topic = data.get('topic')
+    
+    if not topic:
+        return jsonify({'error': '请提供话题数据'}), 400
+    
+    favorites = _load_favorites()
+    
+    # 检查是否已收藏（通过标题判断）
+    topic_title = topic.get('title', '')
+    already_favorited = any(f.get('title') == topic_title for f in favorites)
+    
+    if already_favorited:
+        return jsonify({'success': False, 'message': '该话题已在收藏中'}), 409
+    
+    # 添加收藏时间
+    topic['favorited_at'] = datetime.now().isoformat()
+    favorites.append(topic)
+    _save_favorites(favorites)
+    
+    logger.info(f"收藏话题: {topic_title}")
+    return jsonify({
+        'success': True,
+        'message': '收藏成功',
+        'total': len(favorites)
+    })
+
+
+@hot_topics_bp.route('/favorite/<topic_title>', methods=['DELETE'])
+def remove_favorite(topic_title):
+    """
+    取消收藏热点话题
+    
+    Args:
+        topic_title: 话题标题（URL编码）
+    
+    Returns:
+        取消收藏结果
+    """
+    from urllib.parse import unquote
+    topic_title = unquote(topic_title)
+    
+    favorites = _load_favorites()
+    original_count = len(favorites)
+    favorites = [f for f in favorites if f.get('title') != topic_title]
+    
+    if len(favorites) == original_count:
+        return jsonify({'success': False, 'message': '未找到该话题'}), 404
+    
+    _save_favorites(favorites)
+    logger.info(f"取消收藏话题: {topic_title}")
+    return jsonify({
+        'success': True,
+        'message': '取消收藏成功',
+        'total': len(favorites)
+    })
+
+
+@hot_topics_bp.route('/favorites', methods=['GET'])
+def get_favorites():
+    """
+    获取收藏的热点话题列表
+    
+    Query Params:
+        sort_by: 排序方式（created_at/title/relevance_score）
+    
+    Returns:
+        收藏列表
+    """
+    favorites = _load_favorites()
+    sort_by = request.args.get('sort_by', 'favorited_at')
+    
+    # 排序
+    if sort_by == 'title':
+        favorites.sort(key=lambda x: x.get('title', ''))
+    elif sort_by == 'relevance_score':
+        favorites.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+    else:  # favorited_at
+        favorites.sort(key=lambda x: x.get('favorited_at', ''), reverse=True)
+    
+    return jsonify({
+        'success': True,
+        'topics': favorites,
+        'total': len(favorites)
+    })
