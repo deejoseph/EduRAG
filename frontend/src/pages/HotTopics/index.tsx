@@ -63,17 +63,20 @@ const HotTopicsPage: React.FC = () => {
       // 定期更新进度提示
       const progressTimer = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        if (elapsed < 10) {
+        if (elapsed < 5) {
           message.destroy();
           message.loading(`正在分析社会热点... (${elapsed}秒)`, 0);
-        } else if (elapsed < 30) {
+        } else if (elapsed < 15) {
           message.destroy();
           message.loading(`LLM正在生成命题预测... (${elapsed}秒)`, 0);
+        } else if (elapsed < 30) {
+          message.destroy();
+          message.warning(`⏱️ LLM响应较慢，系统将使用示例数据... (${elapsed}秒)`, 2);
         } else {
           message.destroy();
-          message.loading(`仍在处理中，请稍候... (${elapsed}秒)`, 0);
+          message.warning(`仍在处理中，请稍候... (${elapsed}秒)`, 2);
         }
-      }, 5000);
+      }, 3000);
       
       const res = await searchHotTopics({
         category_id: selectedCategory,
@@ -91,10 +94,24 @@ const HotTopicsPage: React.FC = () => {
       if (res.topics.length === 0) {
         message.warning('暂无热点数据，请点击"刷新缓存"按钮重新生成', 3);
       } else {
-        message.success(
-          `✅ 成功获取 ${res.topics.length} 个热点话题（耗时 ${elapsedTime} 秒）`, 
-          3
+        // 检查是否使用了降级数据（通过检查是否有"示例"字样）
+        const hasFallbackData = res.message?.includes('成功生成') && res.topics.some(t => 
+          t.title.includes('人工智能与人类创造力') || 
+          t.title.includes('数字时代的') ||
+          t.title.includes('算法推荐')
         );
+        
+        if (hasFallbackData && elapsedTime > 20) {
+          message.warning(
+            `⚠️ LLM响应超时，已显示示例数据（耗时 ${elapsedTime} 秒）。如需真实数据，请点击"刷新缓存"`, 
+            5
+          );
+        } else {
+          message.success(
+            `✅ 成功获取 ${res.topics.length} 个热点话题（耗时 ${elapsedTime} 秒）`, 
+            3
+          );
+        }
       }
     } catch (error: any) {
       message.destroy();
@@ -209,6 +226,13 @@ const HotTopicsPage: React.FC = () => {
               <li>参考素材（名人名言、典型案例）</li>
               <li>难度评估和相关度评分</li>
             </ul>
+            <Divider style={{ margin: '12px 0' }} />
+            <p style={{ marginBottom: 0 }}>
+              <Text type="secondary">
+                💡 <strong>提示：</strong>首次搜索可能需要等待 LLM 响应（最长120秒）。如果超时，系统将自动显示示例数据。
+                点击"刷新缓存"可尝试重新生成真实数据。
+              </Text>
+            </p>
           </div>
         }
         type="info"

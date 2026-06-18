@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu } from 'antd';
+import { Menu, Badge } from 'antd';
 import {
   HomeOutlined,
   EditOutlined,
@@ -10,13 +10,23 @@ import {
   CloudUploadOutlined,
   BookOutlined,
   FireOutlined,
+  StarFilled,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const menuItems = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
   { key: '/writing', icon: <EditOutlined />, label: '写作训练' },
-  { key: '/practice', icon: <ThunderboltOutlined />, label: '强化训练' },
+  { 
+    key: '/practice', 
+    icon: <ThunderboltOutlined style={{ color: '#faad14' }} />, 
+    label: (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontWeight: 600, color: '#faad14' }}>强化训练</span>
+        <Badge count="关键" style={{ backgroundColor: '#ff4d4f', fontSize: 10 }} />
+      </div>
+    ),
+  },
   { key: '/growth-log', icon: <LineChartOutlined />, label: '成长日志' },
   { key: '/portfolio', icon: <BookOutlined />, label: '作品集' },
   { key: '/hot-topics', icon: <FireOutlined style={{ color: '#ff4d4f' }} />, label: '命题热点' },
