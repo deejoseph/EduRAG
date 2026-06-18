@@ -6,10 +6,33 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api-proxy': {
+      '/portfolio': {
         target: 'http://localhost:5000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-proxy/, ''),
+      },
+      '/hot-topics': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+      '/writing': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+      '/practice': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+      '/search': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+      '/upload': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+      '/health': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
       },
     },
   },
