@@ -313,6 +313,9 @@ def search_hot_topics():
         - difficulty: 难度等级
         - relevance_score: 相关度评分
     """
+    import time
+    
+    start_time = time.time()
     data = request.get_json() or {}
     category_id = data.get('category_id')
     use_cache = data.get('use_cache', True)
@@ -332,8 +335,16 @@ def search_hot_topics():
     
     all_topics = []
     processed_count = 0
+    timeout_count = 0
+    max_total_time = 300  # 总超时时间5分钟
     
     for category in categories:
+        # 检查总耗时
+        elapsed = time.time() - start_time
+        if elapsed > max_total_time:
+            logger.warning(f"总耗时超过{max_total_time}秒，停止处理剩余分类")
+            break
+        
         cat_id = category['id']
         processed_count += 1
         
@@ -364,6 +375,7 @@ def search_hot_topics():
                 all_topics.extend(fallback_topics)
                 logger.info(f"使用降级数据，共 {len(fallback_topics)} 个话题")
         except Exception as e:
+            timeout_count += 1
             logger.error(f"生成热点话题失败 [{category['name']}]: {e}", exc_info=True)
             # 使用降级数据
             fallback_topics = _get_fallback_topics(category)
@@ -371,7 +383,8 @@ def search_hot_topics():
             logger.info(f"异常后使用降级数据，共 {len(fallback_topics)} 个话题")
             continue
     
-    logger.info(f"搜索完成，总共返回 {len(all_topics)} 个话题")
+    total_elapsed = time.time() - start_time
+    logger.info(f"搜索完成，总共返回 {len(all_topics)} 个话题（耗时 {total_elapsed:.1f}秒，超时 {timeout_count} 个分类）")
     
     return jsonify({
         'success': True,
