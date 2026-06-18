@@ -1,0 +1,91 @@
+/* EduRAG 全局样式 */
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #f5f7fa;
+}
+
+#root {
+  height: 100vh;
+}
+
+/* 页面容器 */
+.page-container {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Markdown 渲染区域 */
+.markdown-content {
+  line-height: 1.8;
+  font-size: 15px;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 24px;
+}
+
+.markdown-content code {
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid #1890ff;
+  margin: 12px 0;
+  padding: 8px 16px;
+  background: #e6f7ff;
+  border-radius: 0 4px 4px 0;
+}
+
+/* 写作编辑器 */
+.essay-editor textarea {
+  font-size: 16px;
+  line-height: 1.8;
+  font-family: 'SimSun', 'STSong', serif;
+}
+
+/* 搜索结果卡片 */
+.result-card {
+  margin-bottom: 12px;
+  transition: box-shadow 0.3s;
+}
+
+.result-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 参考资料面板 */
+.reference-panel .ant-collapse-header {
+  font-weight: 500;
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+}
+
+.loading-container .ant-spin-text {
+  margin-top: 16px;
+  font-size: 15px;
+  color: #666;
+}

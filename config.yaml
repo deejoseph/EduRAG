@@ -1,0 +1,60 @@
+# Ollama 配置
+ollama:
+  base_url: "http://localhost:11434"
+  model: "qwen3:8b"          # 可选 qwen2.5:7b / deepseek-r1:8b
+  temperature: 0.7
+  num_predict: 1024
+
+# RAG 检索配置
+retrieval:
+  default_top_k: 8
+  similarity_threshold: 0.25   # 低于此分数不采用
+  rerank: false                # 是否默认启用重排序
+  rerank_weight: 0.7           # 重排序分数权重（0.7=70%重排序+30%原始）
+  # 元数据过滤默认值
+  default_filters:
+    year: null                 # 按年份过滤（如 2023）
+    exam_region: null          # 按考区过滤（如 “全国卷I”）
+    doc_category: null         # 按文档类型过滤（范文/素材/技巧/解析/综合）
+
+# 向量数据库
+chroma:
+  persist_directory: "./data/chroma_db"
+
+# Embedding 模型
+embedding:
+  model_name: "BAAI/bge-base-zh-v1.5"
+  device: "cuda"              # pixel_ai 环境包含 CUDA 版 PyTorch (2.5.1+cu121)
+
+# 重排序模型
+reranker:
+  model_name: "BAAI/bge-reranker-base"  # 可选 bge-reranker-large
+  device: "cuda"              # pixel_ai 环境包含 CUDA 版 PyTorch (2.5.1+cu121)
+
+# API 服务
+api:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+
+# 文档导入配置
+import:
+  default_source: "D:\\BaiduNetdiskDownload\\2025全国高考满分作文电子版历年语文写作优秀范文1000篇学习资料"
+  collection_name: "chinese_essays"
+  chunk_size: 500
+  chunk_overlap: 50
+  batch_size: 50
+  supported_types: ["pdf", "docx"]
+  progress_file: "data/import_progress.json"
+
+# 真题库导入配置
+exam_import:
+  collection_name: "exam_papers"    # 真题默认集合名
+  chunk_size: 800                   # 试卷文本较长，分块稍大
+  chunk_overlap: 80
+  batch_size: 50
+  supported_types: ["pdf", "docx"]
+  progress_file: "data/exam_import_progress.json"
+  # 试卷元数据默认值（可从文件名自动识别）
+  default_grade_level: "高考"        # 默认学段
+  default_subject: "语文"             # 默认科目
