@@ -520,7 +520,7 @@ const HotTopicsPage: React.FC = () => {
                       {topic.description}
                     </Text>
                     <div style={{ marginTop: 8 }}>
-                      <Badge count={topic.count} overflowCount={99} style={{ backgroundColor: '#52c41a' }} />
+                      <Badge count={topic.count} overflowCount={99999} style={{ backgroundColor: '#52c41a' }} />
                       <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
                         相关度: {(topic.max_score * 100).toFixed(0)}%
                       </Text>
