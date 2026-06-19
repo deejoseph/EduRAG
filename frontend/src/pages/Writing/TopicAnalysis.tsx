@@ -98,12 +98,11 @@ const TopicAnalysis: React.FC = () => {
                 <Space direction="vertical" size={0}>
                   <Space size={4} align="center">
                     <Text strong>{f.title}</Text>
-                    <Tag 
-                      color={f.source === 'rag' ? 'green' : 'orange'} 
-                      style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}
-                    >
-                      {f.source === 'rag' ? 'RAG' : 'AI预测'}
-                    </Tag>
+                    {f.source === 'rag' && (
+                      <Tag color="green" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
+                        RAG
+                      </Tag>
+                    )}
                   </Space>
                   <Space size="small">
                     <Badge count={`已练习${f.practice_count || 0}次`} style={{ backgroundColor: f.practice_count > 0 ? '#faad14' : '#d9d9d9' }} />

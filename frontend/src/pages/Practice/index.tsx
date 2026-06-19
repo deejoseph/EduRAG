@@ -153,12 +153,11 @@ const PracticePage: React.FC = () => {
                       <Space direction="vertical" size={0} style={{ width: '100%' }}>
                         <Space size={4} align="center">
                           <Text strong>{f.title}</Text>
-                          <Tag 
-                            color={f.source === 'rag' ? 'green' : 'orange'} 
-                            style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}
-                          >
-                            {f.source === 'rag' ? 'RAG' : 'AI预测'}
-                          </Tag>
+                          {f.source === 'rag' && (
+                            <Tag color="green" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
+                              RAG
+                            </Tag>
+                          )}
                         </Space>
                         <Space size="small">
                           <Badge 
