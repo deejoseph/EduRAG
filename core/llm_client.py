@@ -21,9 +21,9 @@ class OllamaClient:
         model: str = "qwen2.5:7b",
         temperature: float = 0.7,
         num_predict: int = 1024,
-        timeout: int = 60,  # 降低默认超时到60秒，避免长时间等待
-        max_retries: int = 2,  # 减少重试次数到2次
-        retry_delay: float = 0.5  # 减少重试间隔
+        timeout: int = 45,  # 降低默认超时到45秒，避免长时间等待
+        max_retries: int = 1,  # 减少重试次数到1次，快速失败
+        retry_delay: float = 0.3  # 减少重试间隔
     ):
         """
         初始化 Ollama 客户端

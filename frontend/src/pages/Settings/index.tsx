@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Descriptions, Tag, Button, Alert, Spin, Space, Divider, Typography, Popconfirm, message } from 'antd';
+import { Card, Descriptions, Tag, Button, Alert, Spin, Space, Divider, Typography, Popconfirm, message, Select } from 'antd';
 import {
   CheckCircleOutlined, CloseCircleOutlined,
   ThunderboltOutlined, DatabaseOutlined, ReloadOutlined,
-  DeleteOutlined, LineChartOutlined,
+  DeleteOutlined, LineChartOutlined, SwapOutlined,
 } from '@ant-design/icons';
 import { healthApi, searchApi } from '../../api/search';
 import { resetPortfolio } from '../../api/portfolio';
@@ -17,6 +17,12 @@ const Settings: React.FC = () => {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 模型切换相关状态
+  const [currentModel, setCurrentModel] = useState<string>('');
+  const [availableModels, setAvailableModels] = useState<Array<{value: string; label: string}>>([]);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [switchingModel, setSwitchingModel] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -35,8 +41,44 @@ const Settings: React.FC = () => {
     }
   };
 
+  // 获取模型信息
+  const fetchModelInfo = async () => {
+    try {
+      setModelLoading(true);
+      const res = await healthApi.getModel();
+      console.log('[Settings] 模型API响应:', res);
+      console.log('[Settings] 当前模型:', res.model);
+      console.log('[Settings] 可用模型列表:', res.available_models);
+      setCurrentModel(res.model);
+      setAvailableModels(res.available_models);
+    } catch (err) {
+      console.error('获取模型信息失败:', err);
+    } finally {
+      setModelLoading(false);
+    }
+  };
+
+  // 切换模型
+  const handleSwitchModel = async (newModel: string) => {
+    if (newModel === currentModel) return;
+
+    try {
+      setSwitchingModel(true);
+      const res = await healthApi.setModel(newModel);
+      message.success(res.message || '模型切换成功');
+      setCurrentModel(newModel);
+      // 刷新页面数据以更新模型显示
+      await fetchData();
+    } catch (err: any) {
+      message.error(err.message || '模型切换失败');
+    } finally {
+      setSwitchingModel(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchModelInfo();
   }, []);
 
   // 重置作品集
@@ -108,7 +150,7 @@ const Settings: React.FC = () => {
             <Descriptions.Item label="LLM 模型">
               <Space>
                 <ThunderboltOutlined style={{ color: '#1890ff' }} />
-                <Text>{stats?.llm_model || health?.model || '-'}</Text>
+                <Text>{stats?.llm_model || health?.model || currentModel || '-'}</Text>
               </Space>
             </Descriptions.Item>
             <Descriptions.Item label="Embedding 模型">
@@ -118,6 +160,28 @@ const Settings: React.FC = () => {
               </Space>
             </Descriptions.Item>
           </Descriptions>
+
+          <Divider style={{ margin: '16px 0 12px 0' }} />
+
+          <Spin spinning={modelLoading}>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>切换模型：</Text>
+              <Select
+                value={currentModel}
+                onChange={handleSwitchModel}
+                loading={switchingModel}
+                disabled={switchingModel}
+                style={{ width: 300 }}
+                options={availableModels}
+                suffixIcon={<SwapOutlined />}
+              />
+              {switchingModel && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  正在切换模型，请稍候...
+                </Text>
+              )}
+            </Space>
+          </Spin>
         </Card>
 
         {/* 知识库统计 */}
@@ -147,11 +211,11 @@ const Settings: React.FC = () => {
         {/* 关于 */}
         <Card title="关于" style={{ marginBottom: 16 }}>
           <Descriptions column={1}>
-            <Descriptions.Item label="应用名称">EduRAG 智能写作助手</Descriptions.Item>
+            <Descriptions.Item label="应用名称">EduRAG 智能学习助手</Descriptions.Item>
             <Descriptions.Item label="版本">1.0.0</Descriptions.Item>
             <Descriptions.Item label="适用场景">高考语文作文训练</Descriptions.Item>
             <Descriptions.Item label="功能">
-              审题分析 → 构思提纲 → 写作辅助 → 作文评估
+              审题分析 → 构思提纲 → 引导练习 → 作文评估
             </Descriptions.Item>
           </Descriptions>
         </Card>

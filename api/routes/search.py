@@ -289,3 +289,110 @@ def stats():
     except Exception as e:
         logger.error(f"获取统计信息失败: {e}")
         return error_response(f"服务端错误: {e}", 500)
+
+
+# ─────────────────────────────────────────────────────────
+# GET /search/hot-topics  热门关键词/主题统计
+# ─────────────────────────────────────────────────────────
+@search_bp.route('/hot-topics', methods=['GET'])
+def hot_topics():
+    """
+    获取知识库中的热门关键词和主题统计
+    
+    响应体：
+    {
+        "success": true,
+        "topics": [
+            {
+                "name": "责任担当",
+                "keywords": ["责任", "担当", "使命", "奉献"],
+                "count": 19,
+                "max_score": 0.391,
+                "description": "高考作文命题重点，关注社会责任与历史使命"
+            }
+        ],
+        "total_topics": 8
+    }
+    """
+    try:
+        retriever = get_retriever()
+        
+        # 定义高考作文常见主题及其关键词
+        topic_definitions = {
+            '家国情怀': {
+                'keywords': ['爱国', '国家', '民族', '祖国'],
+                'description': '爱国主义、民族精神、家国责任'
+            },
+            '责任担当': {
+                'keywords': ['责任', '担当', '使命', '奉献'],
+                'description': '社会责任、历史使命、奉献精神'
+            },
+            '文化传承': {
+                'keywords': ['文化', '传统', '传承', ' heritage'],
+                'description': '传统文化、文化自信、文明传承'
+            },
+            '科技创新': {
+                'keywords': ['科技', '创新', 'AI', '人工智能'],
+                'description': '科技发展、创新精神、智能时代'
+            },
+            '生态文明': {
+                'keywords': ['环境', '生态', '绿色', '低碳'],
+                'description': '环境保护、绿色发展、可持续发展'
+            },
+            '青年成长': {
+                'keywords': ['青年', '成长', '奋斗', '梦想'],
+                'description': '青年责任、成长历程、奋斗精神'
+            },
+            '人生价值': {
+                'keywords': ['价值', '选择', '意义', '理想'],
+                'description': '人生价值、价值选择、理想信念'
+            },
+            '时代精神': {
+                'keywords': ['时代', '发展', '变革', '进步'],
+                'description': '时代特征、社会进步、改革发展'
+            }
+        }
+        
+        # 统计每个主题的相关文档数
+        topics_stats = []
+        for topic_name, definition in topic_definitions.items():
+            total_count = 0
+            max_score = 0.0
+            
+            # 对每个关键词进行搜索
+            for keyword in definition['keywords']:
+                result = retriever.search(
+                    collection_name='chinese_essays',
+                    query=keyword,
+                    top_k=5,
+                    score_threshold=0.05,
+                )
+                
+                # 统计高于阈值的结果
+                relevant_docs = [s for s in result.scores if s > 0.05]
+                total_count += len(relevant_docs)
+                
+                if result.scores:
+                    max_score = max(max_score, max(result.scores))
+            
+            topics_stats.append({
+                'name': topic_name,
+                'keywords': definition['keywords'],
+                'count': total_count,
+                'max_score': round(max_score, 3),
+                'description': definition['description'],
+            })
+        
+        # 按相关文档数排序
+        topics_stats.sort(key=lambda x: x['count'], reverse=True)
+        
+        logger.info(f"✅ 热门主题统计完成，共 {len(topics_stats)} 个主题")
+        
+        return success_response({
+            'topics': topics_stats,
+            'total_topics': len(topics_stats),
+        })
+    
+    except Exception as e:
+        logger.error(f"获取热门主题失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)

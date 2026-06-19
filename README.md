@@ -70,8 +70,30 @@ EduRAG（Educational Retrieval-Augmented Generation）是一个专为 K12 阶段
 - **多维筛选**：年份/考区/题型/学段等 8 个维度
 - **LLM 增强**：可选的 AI 总结回答
 - **结果展示**：高亮相关片段，显示元数据
+- **RAG 热门主题**：基于知识库历史检索数据统计，展示高考作文高频主题方向，支持一键收藏到题库（标记为 `[RAG]` 来源）
 
-### 5. 成长日志模块
+### 5. 命题热点模块
+
+AI 驱动的高考作文命题预测：
+
+- **智能命题预测**：基于社会热点、教育动态、时政新闻，由 LLM 生成模拟高考作文题目
+- **六大分类覆盖**：科技发展、文化传承、生态文明、教育改革、社会责任、国际视野
+- **自定义命题**：支持输入自定义主题名称和关键词，生成个性化命题预测
+- **题目详情**：每个预测题目包含材料、写作要求、参考角度、评分标准
+- **题库收藏**：一键收藏到题库，标记为 `[AI预测]` 来源，供后续训练使用
+- **缓存机制**：LLM 生成结果本地缓存，支持强制刷新
+- **容错解析**：内置状态机 JSON 解析器，自动修复 LLM 返回的格式异常
+
+### 6. 题库系统
+
+统一管理来自不同来源的收藏题目：
+
+- **来源标识**：题目明确标注 `[RAG]`（知识库历史数据）或 `[AI预测]`（LLM 生成）
+- **优先展示**：RAG 来源题目优先排在列表前面，学生练习时优先选择
+- **练习统计**：显示每道题目的练习次数，避免重复训练
+- **多入口收藏**：支持从"知识检索"和"命题热点"两个页面收藏题目
+
+### 7. 成长日志模块
 
 可视化的学习数据分析：
 
@@ -80,7 +102,7 @@ EduRAG（Educational Retrieval-Augmented Generation）是一个专为 K12 阶段
 - **能力雷达**：RadarChart 呈现四维能力分布
 - **历史记录**：完整的训练历史查询
 
-### 6. 系统设置模块
+### 8. 系统设置模块
 
 系统配置和数据管理：
 
@@ -203,6 +225,7 @@ EduRAG/
 │       ├── practice.py      # 强化训练接口
 │       ├── portfolio.py     # 作品集接口
 │       ├── search.py        # 知识库检索接口
+│       ├── hot_topics.py    # 命题热点与题库接口
 │       └── upload.py        # 知识库上传接口
 │
 ├── subjects/                # 学科模块
@@ -213,6 +236,7 @@ EduRAG/
 │
 ├── scripts/                 # 工具脚本
 │   ├── import_docs.py       # 批量导入文档
+│   ├── import_exam_papers.py # 试卷批量导入
 │   ├── doc_extractors.py    # PDF/DOCX 提取
 │   ├── text_chunker.py      # 文本分块
 │   └── exam_parser.py       # 试卷解析
@@ -224,8 +248,10 @@ EduRAG/
 │       │   ├── Writing/     # 写作训练
 │       │   ├── Practice/    # 强化训练
 │       │   ├── Portfolio/   # 作品集
-│       │   ├── Search/      # 知识检索
+│       │   ├── Search/      # 知识检索（含 RAG 热门主题）
+│       │   ├── HotTopics/   # 智能命题热点
 │       │   ├── GrowthLog/   # 成长日志
+│       │   ├── Upload/      # 文档上传
 │       │   └── Settings/    # 系统设置
 │       ├── components/      # 通用组件
 │       ├── api/             # API 封装
@@ -234,31 +260,47 @@ EduRAG/
 │
 ├── data/                    # 数据存储
 │   ├── chroma_db/           # ChromaDB 持久化
-│   └── practice_records/    # 训练记录
+│   ├── practice_records/    # 训练记录
+│   ├── portfolio/           # 作品集数据
+│   ├── hot_topics_cache/    # 命题热点缓存
+│   └── hot_topics_favorites.json  # 题库收藏
 │
 ├── config.yaml              # 全局配置
 ├── requirements.txt         # Python 依赖
-└── start.bat                # 一键启动脚本
+├── start.bat                # 一键启动脚本
+└── start_backend.py         # 后端启动脚本
 ```
 
 ### 数据流图
 
 ```
-用户请求 → API 路由 → 学科模块（如 writing.py）
-                          ↓
-                    调用 RAG Pipeline
-                          ↓
-            ┌─────────────┼─────────────┐
-            ↓             ↓             ↓
-        检索器         Prompt 模板    LLM 客户端
-            ↓             ↓             ↓
-        向量数据库    上下文构建    Ollama 模型
-            ↓             ↓             ↓
-            └─────────────┼─────────────┘
-                          ↓
-                    后处理（过滤、格式化）
-                          ↓
-                    返回结构化响应
+写作/训练请求 → API 路由 → 学科模块（如 writing.py）
+                              ↓
+                        调用 RAG Pipeline
+                              ↓
+                ┌─────────────┼─────────────┐
+                ↓             ↓             ↓
+            检索器         Prompt 模板    LLM 客户端
+                ↓             ↓             ↓
+            向量数据库    上下文构建    Ollama 模型
+                ↓             ↓             ↓
+                └─────────────┼─────────────┘
+                              ↓
+                        后处理（过滤、格式化）
+                              ↓
+                        返回结构化响应
+
+命题热点请求 → hot_topics.py → LLM 生成 / 缓存读取
+                              ↓
+                     状态机 JSON 解析器（容错）
+                              ↓
+                     返回预测题目列表
+
+知识检索热门 → search.py → ChromaDB 统计
+                              ↓
+                     聚合高频主题 → 标记 [RAG] 来源
+                              ↓
+                     返回热门主题列表（可收藏）
 ```
 
 ---
@@ -310,8 +352,22 @@ EduRAG/
 | POST | `/search/query` | 知识库检索 |
 | GET | `/search/stats` | 知识库统计 |
 | GET | `/search/collections` | 集合列表 |
+| GET | `/search/hot-topics` | RAG 热门主题统计 |
 | POST | `/upload/document` | 上传文档 |
 | POST | `/upload/exam-paper` | 上传试卷 |
+
+#### 命题热点与题库模块
+
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| GET | `/hot-topics/categories` | 获取分类列表 |
+| POST | `/hot-topics/search` | 搜索/生成热点话题 |
+| POST | `/hot-topics/refresh` | 刷新缓存 |
+| POST | `/hot-topics/prompt-generator` | 自定义命题生成 |
+| POST | `/hot-topics/favorite` | 收藏话题（支持 source 标识） |
+| POST | `/hot-topics/favorite-all` | 批量收藏 |
+| DELETE | `/hot-topics/favorite/:title` | 取消收藏 |
+| GET | `/hot-topics/favorites` | 获取题库列表 |
 
 ### 配置说明
 
@@ -484,4 +540,4 @@ INFO:core.embedding:Embedding 模型加载成功: BAAI/bge-base-zh-v1.5 (device:
 
 ---
 
-*最后更新：2026-06-18*
+*最后更新：2026-06-19*

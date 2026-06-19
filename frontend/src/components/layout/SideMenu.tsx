@@ -10,13 +10,12 @@ import {
   CloudUploadOutlined,
   BookOutlined,
   FireOutlined,
-  StarFilled,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const menuItems = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
-  { key: '/writing', icon: <EditOutlined />, label: '写作训练' },
+  { key: '/writing', icon: <EditOutlined />, label: '引导练习' },
   { 
     key: '/practice', 
     icon: <ThunderboltOutlined style={{ color: '#faad14' }} />, 

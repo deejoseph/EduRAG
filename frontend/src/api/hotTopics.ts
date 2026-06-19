@@ -27,6 +27,8 @@ export const getCategories = async (): Promise<{
 // 搜索热点话题
 export const searchHotTopics = async (data: {
   category_id?: string;
+  keywords?: string[];  // 新增：关键词数组
+  topic_name?: string;  // 新增：主题名称
   use_cache?: boolean;
   force_refresh?: boolean;
 }): Promise<HotTopicsResponse> => {
@@ -55,12 +57,25 @@ export const generateCustomPrompt = async (
 };
 
 // 收藏热点话题
-export const favoriteTopic = async (topic: any): Promise<{
+export const favoriteTopic = async (topic: any, source?: string): Promise<{
   success: boolean;
   message: string;
   total: number;
 }> => {
-  const response = await api.post('/favorite', { topic });
+  const topicData = source ? { ...topic, source } : topic;
+  const response = await api.post('/favorite', { topic: topicData });
+  return response.data;
+};
+
+// 一键收藏所有话题
+export const favoriteAllTopics = async (topics: any[]): Promise<{
+  success: boolean;
+  message: string;
+  added: number;
+  skipped: number;
+  total: number;
+}> => {
+  const response = await api.post('/favorite-all', { topics });
   return response.data;
 };
 
@@ -81,5 +96,26 @@ export const getFavorites = async (sortBy: string = 'favorited_at'): Promise<{
   total: number;
 }> => {
   const response = await api.get(`/favorites?sort_by=${sortBy}`);
+  return response.data;
+};
+
+// 获取知识库热门主题统计（用于命题热点的历史主题搜索）
+const searchApi = axios.create({
+  baseURL: '/search',
+  timeout: 30000,
+});
+
+export const getHotTopicsStats = async (): Promise<{
+  success: boolean;
+  topics: Array<{
+    name: string;
+    keywords: string[];
+    count: number;
+    max_score: number;
+    description: string;
+  }>;
+  total_topics: number;
+}> => {
+  const response = await searchApi.get('/hot-topics');
   return response.data;
 };

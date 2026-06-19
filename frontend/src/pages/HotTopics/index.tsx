@@ -5,12 +5,14 @@ import {
 } from 'antd';
 import {
   FireOutlined, ReloadOutlined, BulbOutlined,
-  SearchOutlined, StarOutlined, StarFilled, DeleteOutlined,
+  SearchOutlined, StarOutlined, StarFilled,
+  HistoryOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import type { TopicCategory, HotTopic } from '../../types/hotTopics';
 import {
   getCategories, searchHotTopics, refreshCache, generateCustomPrompt,
-  favoriteTopic, unfavoriteTopic, getFavorites,
+  favoriteTopic, unfavoriteTopic, getFavorites, getHotTopicsStats,
+  favoriteAllTopics,
 } from '../../api/hotTopics';
 import MarkdownRenderer from '../../components/common/MarkdownRenderer';
 
@@ -39,6 +41,16 @@ const HotTopicsPage: React.FC = () => {
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<HotTopic | null>(null);
   
+  // 历史热门主题相关状态
+  const [hotTopicsStats, setHotTopicsStats] = useState<Array<{
+    name: string;
+    keywords: string[];
+    count: number;
+    max_score: number;
+    description: string;
+  }>>([]);
+  const [loadingHotTopics, setLoadingHotTopics] = useState(false);
+  
   // 加载收藏列表
   useEffect(() => {
     loadFavorites();
@@ -51,6 +63,23 @@ const HotTopicsPage: React.FC = () => {
       setFavoritedTitles(new Set(res.topics.map(t => t.title)));
     } catch (error) {
       console.error('加载收藏失败:', error);
+    }
+  };
+
+  // 加载历史热门主题统计
+  useEffect(() => {
+    loadHotTopicsStats();
+  }, []);
+
+  const loadHotTopicsStats = async () => {
+    try {
+      setLoadingHotTopics(true);
+      const res = await getHotTopicsStats();
+      setHotTopicsStats(res.topics);
+    } catch (error) {
+      console.error('加载热门主题统计失败:', error);
+    } finally {
+      setLoadingHotTopics(false);
     }
   };
 
@@ -116,7 +145,7 @@ const HotTopicsPage: React.FC = () => {
         message.warning('暂无热点数据，请点击"刷新缓存"按钮重新生成', 3);
       } else {
         // 检查是否使用了降级数据（通过检查是否有"示例"字样）
-        const hasFallbackData = res.message?.includes('成功生成') && res.topics.some(t => 
+        const hasFallbackData = res.topics.some(t => 
           t.title.includes('人工智能与人类创造力') || 
           t.title.includes('数字时代的') ||
           t.title.includes('算法推荐')
@@ -236,6 +265,24 @@ const HotTopicsPage: React.FC = () => {
       }
     }
   };
+
+  // 一键收藏所有当前话题
+  const handleFavoriteAll = async () => {
+    if (topics.length === 0) {
+      message.warning('当前没有可收藏的话题');
+      return;
+    }
+
+    try {
+      const res = await favoriteAllTopics(topics);
+      message.success(res.message);
+      // 重新加载收藏列表
+      await loadFavorites();
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.error || error?.message || '一键收藏失败';
+      message.error(errorMsg);
+    }
+  };
   
   // 获取当前显示的话题列表
   const getDisplayedTopics = () => {
@@ -243,6 +290,68 @@ const HotTopicsPage: React.FC = () => {
       return favorites;
     }
     return topics;
+  };
+
+  // 点击热门主题进行搜索
+  const handleSearchByHotTopic = async (topicName: string, keywords: string[]) => {
+    setLoading(true);
+    
+    message.info(`🔍 正在分析"${topicName}"相关命题...`, 2);
+    
+    try {
+      message.loading('正在连接后端服务...', 0);
+      
+      const startTime = Date.now();
+      
+      // 定期更新进度提示
+      const progressTimer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        if (elapsed < 5) {
+          message.destroy();
+          message.loading(`正在分析"${topicName}"主题... (${elapsed}秒)`, 0);
+        } else if (elapsed < 15) {
+          message.destroy();
+          message.loading(`LLM正在生成命题预测... (${elapsed}秒)`, 0);
+        } else if (elapsed < 30) {
+          message.destroy();
+          message.warning(`⏱️ LLM响应较慢，请耐心等待... (${elapsed}秒)`, 2);
+        } else {
+          message.destroy();
+          message.warning(`仍在处理中，请稍候... (${elapsed}秒)`, 2);
+        }
+      }, 3000);
+      
+      // 使用关键词作为搜索条件，调用后端API
+      const res = await searchHotTopics({
+        keywords: keywords,
+        topic_name: topicName,
+        use_cache: true,
+      });
+      
+      // 清除定时器
+      clearInterval(progressTimer);
+      message.destroy();
+      
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+      
+      setTopics(res.topics);
+      
+      if (res.topics.length === 0) {
+        message.warning(`未能生成与"${topicName}"相关的命题预测，请重试`, 3);
+      } else {
+        message.success(
+          `✅ 成功获取"${topicName}"相关命题预测（共 ${res.topics.length} 个，耗时 ${elapsedTime} 秒）`, 
+          3
+        );
+      }
+    } catch (error: any) {
+      message.destroy();
+      const errorMsg = error?.response?.data?.error || error?.message || '搜索失败，请重试';
+      message.error(`❌ ${errorMsg}`, 5);
+      console.error('搜索热点话题失败:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 获取难度标签颜色
@@ -336,6 +445,15 @@ const HotTopicsPage: React.FC = () => {
           </Button>
 
           <Button
+            icon={<DownloadOutlined />}
+            onClick={handleFavoriteAll}
+            disabled={topics.length === 0 || showFavoritesOnly}
+            title={topics.length > 0 ? `一键收藏当前 ${topics.length} 个话题` : '请先搜索话题'}
+          >
+            一键收藏
+          </Button>
+
+          <Button
             icon={<BulbOutlined />}
             onClick={() => setPromptModalVisible(true)}
           >
@@ -365,6 +483,59 @@ const HotTopicsPage: React.FC = () => {
             </Space>
           </div>
         )}
+      </Card>
+
+      {/* 历史热门主题快速搜索 */}
+      <Card 
+        title={
+          <Space>
+            <HistoryOutlined style={{ color: '#faad14' }} />
+            按历史热门主题搜索
+          </Space>
+        }
+        style={{ marginBottom: 24 }}
+        loading={loadingHotTopics}
+      >
+        <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+          点击下方主题标签，基于知识库统计的热门主题生成相关命题预测
+        </Text>
+        <Space wrap size="middle">
+          {hotTopicsStats.map((topic, index) => (
+            <Card
+              key={index}
+              hoverable
+              style={{ width: 200, cursor: 'pointer' }}
+              onClick={() => handleSearchByHotTopic(topic.name, topic.keywords)}
+            >
+              <Card.Meta
+                title={
+                  <Space>
+                    <FireOutlined style={{ color: '#ff4d4f' }} />
+                    {topic.name}
+                  </Space>
+                }
+                description={
+                  <>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {topic.description}
+                    </Text>
+                    <div style={{ marginTop: 8 }}>
+                      <Badge count={topic.count} overflowCount={99} style={{ backgroundColor: '#52c41a' }} />
+                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                        相关度: {(topic.max_score * 100).toFixed(0)}%
+                      </Text>
+                    </div>
+                    <Space wrap style={{ marginTop: 8 }}>
+                      {topic.keywords.slice(0, 3).map((kw, idx) => (
+                        <Tag key={idx} style={{ fontSize: 10 }}>{kw}</Tag>
+                      ))}
+                    </Space>
+                  </>
+                }
+              />
+            </Card>
+          ))}
+        </Space>
       </Card>
 
       {/* 热点话题列表 */}

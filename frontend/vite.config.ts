@@ -34,6 +34,10 @@ export default defineConfig({
         target: 'http://localhost:5000',
         changeOrigin: true,
       },
+      '/system': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
     },
   },
 })

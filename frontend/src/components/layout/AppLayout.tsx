@@ -31,12 +31,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           color: '#1890ff',
           borderBottom: '1px solid #f0f0f0',
         }}>
-          {collapsed ? 'Edu' : 'EduRAG 写作助手'}
+          {collapsed ? 'Edu' : 'EduRAG 智能学习'}
         </div>
         <SideMenu />
       </Sider>
       <Layout>
-        <Content style={{ overflow: 'auto', background: '#f5f7fa' }}>
+        <Content style={{ minHeight: '100vh', overflow: 'auto', background: '#f5f7fa' }}>
           {children}
         </Content>
       </Layout>

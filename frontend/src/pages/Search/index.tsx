@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Input, Button, Card, Row, Col, Select, Switch, Tag, Typography,
-  Collapse, Space, Empty, Slider, InputNumber, message,
+  Input, Button, Row, Col, Select, Switch, Tag, Typography,
+  Collapse, Space, Empty, Slider, InputNumber, message, Alert, Card,
+  Popconfirm,
 } from 'antd';
 import {
   SearchOutlined, FilterOutlined, BulbOutlined,
-  FileTextOutlined,
+  FileTextOutlined, FireOutlined, StarFilled, StarOutlined,
 } from '@ant-design/icons';
 import { searchApi } from '../../api/search';
+import { favoriteTopic, getFavorites } from '../../api/hotTopics';
 import MarkdownRenderer from '../../components/common/MarkdownRenderer';
 import LoadingOverlay from '../../components/common/LoadingOverlay';
-import type { SearchResult, Filters } from '../../types/api';
+import type { SearchResult, Filters, HotTopic } from '../../types/api';
 import {
   DOC_CATEGORIES, QUESTION_TYPES, EXAM_REGIONS,
   GRADE_LEVELS, SUBJECTS, SOURCE_TYPES,
@@ -40,12 +42,105 @@ const Search: React.FC = () => {
   const [llmAnswer, setLlmAnswer] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
+  // 热门主题
+  const [hotTopics, setHotTopics] = useState<HotTopic[]>([]);
+
+  // 已收藏的题目（来自题库）
+  const [favoritedTitles, setFavoritedTitles] = useState<Set<string>>(new Set());
+
   // 过滤条件
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<Filters>({});
   const [withLlm, setWithLlm] = useState(false);
   const [topK, setTopK] = useState(10);
   const [scoreThreshold, setScoreThreshold] = useState(0.01); // 降低到0.01以支持更多查询
+
+  // 加载热门主题
+  useEffect(() => {
+    loadHotTopics();
+    loadFavorites();
+  }, []);
+
+  const loadFavorites = async () => {
+    try {
+      const res = await getFavorites();
+      setFavoritedTitles(new Set(res.topics.map((t: any) => t.title)));
+    } catch {
+      // 静默失败
+    }
+  };
+
+  // 收藏/取消收藏 RAG 热门主题
+  const handleToggleFavorite = async (topic: HotTopic) => {
+    const title = topic.name;
+    const isFavorited = favoritedTitles.has(title);
+
+    if (isFavorited) {
+      try {
+        const { unfavoriteTopic } = await import('../../api/hotTopics');
+        await unfavoriteTopic(title);
+        const next = new Set(favoritedTitles);
+        next.delete(title);
+        setFavoritedTitles(next);
+        message.success('已取消收藏');
+      } catch {
+        message.error('取消收藏失败');
+      }
+    } else {
+      const favoriteData = {
+        title: topic.name,
+        keywords: topic.keywords,
+        category: '知识库热门',
+        difficulty: '中等',
+        relevance_score: Math.min(Math.round(topic.max_score * 10), 10),
+        news_summary: topic.description,
+        count: topic.count,
+      };
+      try {
+        await favoriteTopic(favoriteData, 'rag');
+        const next = new Set(favoritedTitles);
+        next.add(title);
+        setFavoritedTitles(next);
+        message.success('已添加到题库 [RAG]');
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || '收藏失败';
+        message.warning(msg);
+      }
+    }
+  };
+
+  const loadHotTopics = async () => {
+    try {
+      const res = await searchApi.hotTopics();
+      console.log('热门主题响应:', res);
+      setHotTopics(res.topics || []);
+    } catch (err) {
+      console.error('加载热门主题失败:', err);
+      // 即使失败也不影响页面显示
+      setHotTopics([]);
+    }
+  };
+
+  // 点击关键词搜索
+  const handleKeywordClick = (keyword: string) => {
+    setQuery(keyword);
+    setTimeout(() => {
+      // 触发搜索
+      const searchEvent = new CustomEvent('trigger-search', { detail: keyword });
+      window.dispatchEvent(searchEvent);
+    }, 100);
+  };
+
+  // 检测匹配的热门主题
+  const getMatchingTopics = () => {
+    if (!query.trim() || !hotTopics.length) return [];
+    
+    const queryLower = query.toLowerCase();
+    return hotTopics.filter(topic => 
+      topic.name.toLowerCase().includes(queryLower) ||
+      topic.keywords.some(kw => kw.toLowerCase().includes(queryLower))
+    ).slice(0, 3);
+  };
 
   const updateFilter = (key: keyof Filters, value: any) => {
     setFilters(prev => {
@@ -254,8 +349,122 @@ const Search: React.FC = () => {
         />
       )}
 
+      {/* 热门主题区域 - 始终显示 */}
+      {!loading && hotTopics.length > 0 && (
+        <Card
+          title={
+            <>
+              <FireOutlined style={{ color: '#ff4d4f' }} />
+              高考作文热门主题{searched ? '（点击可快速检索）' : ''}
+            </>
+          }
+          style={{ marginTop: searched ? 16 : 16 }}
+          size={searched ? "small" : "default"}
+        >
+          <Row gutter={[12, 12]}>
+            {hotTopics.slice(0, searched ? 4 : 8).map((topic) => {
+              const isFavorited = favoritedTitles.has(topic.name);
+              return (
+              <Col xs={24} sm={12} md={8} lg={6} key={topic.name}>
+                <div
+                  onClick={() => handleKeywordClick(topic.keywords[0])}
+                  className="topic-card"
+                  style={{ cursor: 'pointer' }}
+                >
+                  <Card
+                    size="small"
+                    hoverable
+                    extra={
+                      <Popconfirm
+                        title={isFavorited ? "确定取消收藏？" : "添加到题库？（RAG来源）"}
+                        onConfirm={(e) => {
+                          e?.stopPropagation();
+                          handleToggleFavorite(topic);
+                        }}
+                        okText="确定"
+                        cancelText="取消"
+                      >
+                        <Button
+                          type={isFavorited ? 'primary' : 'default'}
+                          size="small"
+                          icon={isFavorited ? <StarFilled /> : <StarOutlined />}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </Popconfirm>
+                    }
+                  >
+                    <div style={{ marginBottom: 8 }}>
+                      <Tag color="red">{topic.count}</Tag>
+                      <Tag color="green">RAG</Tag>
+                      <Text strong>{topic.name}</Text>
+                    </div>
+                    <div style={{ marginBottom: 8 }}>
+                      {topic.keywords.map(kw => (
+                        <Tag
+                          key={kw}
+                          style={{ cursor: 'pointer', marginBottom: 4 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleKeywordClick(kw);
+                          }}
+                        >
+                          {kw}
+                        </Tag>
+                      ))}
+                    </div>
+                    {!searched && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {topic.description}
+                      </Text>
+                    )}
+                  </Card>
+                </div>
+              </Col>
+              );
+            })}
+          </Row>
+        </Card>
+      )}
+
       {/* 结果区域 */}
       <LoadingOverlay loading={loading} text="正在检索知识库...">
+        {/* 匹配主题提示 - 新增 */}
+        {searched && !loading && results.length > 0 && (
+          (() => {
+            const matchingTopics = getMatchingTopics();
+            return matchingTopics.length > 0 ? (
+              <Alert
+                message={
+                  <>
+                    <FireOutlined style={{ color: '#ff4d4f' }} />
+                    {' '}相关热门主题
+                  </>
+                }
+                description={
+                  <div>
+                    当前搜索与以下热门主题相关，这些可能是高考作文的重点方向：
+                    <div style={{ marginTop: 8 }}>
+                      {matchingTopics.map(topic => (
+                        <Tag
+                          key={topic.name}
+                          color="red"
+                          style={{ cursor: 'pointer', marginBottom: 4 }}
+                          onClick={() => handleKeywordClick(topic.keywords[0])}
+                        >
+                          {topic.name} ({topic.count})
+                        </Tag>
+                      ))}
+                    </div>
+                  </div>
+                }
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            ) : null;
+          })()
+        )}
+
         {/* LLM 回答 */}
         {llmAnswer && (
           <Card

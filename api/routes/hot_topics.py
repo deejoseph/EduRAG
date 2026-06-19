@@ -308,6 +308,7 @@ def search_hot_topics():
     
     Request Body:
         category_id: 分类ID（可选，不传则搜索所有分类）
+        keywords: 关键词数组（可选，用于定向搜索特定主题）
         use_cache: 是否使用缓存（默认 true）
         force_refresh: 强制刷新（默认 false）
     
@@ -332,10 +333,44 @@ def search_hot_topics():
     start_time = time.time()
     data = request.get_json() or {}
     category_id = data.get('category_id')
+    keywords = data.get('keywords', [])  # 新增：支持关键词搜索
     use_cache = data.get('use_cache', True)
     force_refresh = data.get('force_refresh', False)
     
-    logger.info(f"收到热点搜索请求: category_id={category_id}, use_cache={use_cache}, force_refresh={force_refresh}")
+    logger.info(f"收到热点搜索请求: category_id={category_id}, keywords={keywords}, use_cache={use_cache}, force_refresh={force_refresh}")
+    
+    # 如果提供了关键词，使用专门的关键词搜索功能
+    if keywords:
+        try:
+            # 假设第一个关键词是主题名称，或者从前端传递topic_name
+            topic_name = data.get('topic_name', f'主题-{",".join(keywords[:2])}')
+            
+            logger.info(f"🎯 启动关键词搜索模式: topic_name={topic_name}, keywords={keywords}")
+            
+            topics = _generate_hot_topics_by_keywords(keywords, topic_name)
+            
+            if not topics:
+                logger.warning(f"⚠️ [{topic_name}] LLM未返回有效数据")
+                return jsonify({
+                    'success': True,
+                    'topics': [],
+                    'total': 0,
+                    'generated_at': datetime.now().isoformat(),
+                    'message': f'未能生成与"{topic_name}"相关的热点话题，请重试'
+                })
+            
+            logger.info(f"✅ [{topic_name}] 关键词搜索完成，返回 {len(topics)} 个话题")
+            
+            return jsonify({
+                'success': True,
+                'topics': topics,
+                'total': len(topics),
+                'generated_at': datetime.now().isoformat(),
+                'message': f'成功生成 {len(topics)} 个与"{topic_name}"相关的热点话题'
+            })
+        except Exception as e:
+            logger.error(f"❌ 关键词搜索失败: {e}", exc_info=True)
+            return jsonify({'error': f'关键词搜索失败: {str(e)}'}), 500
     
     # 强制刷新时清空缓存
     if force_refresh:
@@ -591,16 +626,14 @@ def _generate_hot_topics(category: dict, llm_client=None) -> list:
         logger.error(f"❌ [{category['name']}] LLM调用失败: {e}", exc_info=True)
         raise
     
-    # 解析 JSON 响应
+    # 解析 JSON 响应（使用智能解析器）
     try:
         # 检查response是否为字典（Ollama API返回格式）
         if isinstance(response, dict):
-            # Ollama chat API返回格式: {"message": {"role": "...", "content": "..."}, ...}
             if 'message' in response and 'content' in response['message']:
                 content = response['message']['content'].strip()
                 logger.info(f"从message.content提取内容成功，长度: {len(content)}")
             elif 'choices' in response and len(response['choices']) > 0:
-                # OpenAI兼容格式
                 content = response['choices'][0].get('text', '').strip()
             elif 'content' in response:
                 content = response['content'].strip()
@@ -611,20 +644,16 @@ def _generate_hot_topics(category: dict, llm_client=None) -> list:
         else:
             content = str(response).strip()
         
+        logger.info(f"📝 [{category['name']}] 提取到响应内容，长度: {len(content)}")
         logger.debug(f"LLM原始响应前500字符: {content[:500]}")
         
-        # 查找 JSON 数组的开始和结束
-        start_idx = content.find('[')
-        end_idx = content.rfind(']')
+        # 使用智能JSON解析器处理LLM返回的内容
+        topics = _safe_parse_json_array(content)
         
-        if start_idx == -1 or end_idx == -1:
-            logger.warning(f"未找到有效的JSON数组格式，响应内容: {content[:200]}...")
+        if topics is None:
+            logger.warning(f"⚠️ [{category['name']}] 智能解析失败，无法提取有效JSON")
             return []
         
-        json_str = content[start_idx:end_idx + 1]
-        logger.info(f"📝 [{category['name']}] 提取到JSON字符串，长度: {len(json_str)}")
-        
-        topics = json.loads(json_str)
         logger.info(f"✅ [{category['name']}] JSON解析成功，共 {len(topics)} 个话题")
         
         # 验证数据结构
@@ -660,17 +689,374 @@ def _generate_hot_topics(category: dict, llm_client=None) -> list:
         logger.info(f"验证完成，有效话题数: {len(validated_topics)}")
         return validated_topics
     
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON解析失败: {e}")
-        # 安全地记录响应内容
-        try:
-            response_str = response if isinstance(response, str) else json.dumps(response, ensure_ascii=False)
-            logger.error(f"原始响应片段: {response_str[:1000]}")
-        except Exception:
-            logger.error(f"无法序列化响应: {type(response)}")
-        return []
     except Exception as e:
         logger.error(f"处理响应失败: {e}", exc_info=True)
+        return []
+
+
+def _safe_parse_json_array(raw_json: str) -> list | None:
+    """
+    安全解析LLM返回的JSON数组。
+
+    核心问题：LLM在JSON字符串值内部经常使用中文引号（\u201c\u201d），
+    简单做 replace('\u201c', '"') 会把字符串内部的引号也替换掉，
+    导致JSON字符串提前结束，解析失败。
+
+    解决方案：逐字符扫描，在JSON字符串内部遇到中文引号或
+    不合理的ASCII引号时，自动转义为 \\" 。
+
+    Returns:
+        解析后的列表，解析失败时返回 None
+    """
+    import re
+
+    # 第一步：移除markdown代码块标记
+    raw_json = raw_json.replace('```json', '').replace('```', '').strip()
+
+    # 第二步：提取 [ ... ] 范围
+    start_idx = raw_json.find('[')
+    end_idx = raw_json.rfind(']')
+    if start_idx == -1:
+        return None
+
+    # 如果没有闭合的 ]，说明JSON被截断了，使用整个剩余内容
+    if end_idx == -1 or end_idx <= start_idx:
+        raw_json = raw_json[start_idx:]
+    else:
+        raw_json = raw_json[start_idx:end_idx + 1]
+
+    # 第三步：逐字符智能解析
+    result = []          # 输出的清理后JSON
+    in_string = False    # 是否在JSON字符串内部
+    skip_next = False    # 是否跳过下一个字符（用于处理 \"）
+    opened_by_chinese = False  # 当前字符串是否由 \u201c 开启
+
+    for i, ch in enumerate(raw_json):
+        if skip_next:
+            result.append(ch)
+            skip_next = False
+            continue
+
+        if not in_string:
+            # ---- JSON结构区域 ----
+            if ch == '\u201c':
+                # 中文左双引号在字符串外部 → 当作JSON字符串起始引号
+                result.append('"')
+                in_string = True
+                opened_by_chinese = True
+            elif ch == '\u201d':
+                # 中文右双引号在字符串外部 → 孤立右引号，转为普通引号（不进入字符串）
+                result.append('"')
+            elif ch == '\u2018' or ch == '\u2019':
+                # 中文单引号在字符串外部 → 转换为普通单引号（不影响JSON结构）
+                result.append(ch)
+            else:
+                result.append(ch)
+                if ch == '"':
+                    in_string = True
+                    opened_by_chinese = False
+        else:
+            # ---- JSON字符串值内部 ----
+            if ch == '\\':
+                # 转义序列：原样保留，跳过下一个字符
+                result.append(ch)
+                skip_next = True
+            elif ch == '"':
+                # ASCII双引号 —— 判断是结构结束符还是内容引号
+                if opened_by_chinese:
+                    # 字符串由 \u201c 开启，ASCII " 是内容
+                    result.append('\\"')
+                else:
+                    # 字符串由 ASCII " 开启，使用 look-ahead 判断
+                    rest = raw_json[i + 1:].lstrip(' \t\n\r')
+                    if rest and rest[0] in ':,}]':
+                        result.append(ch)
+                        in_string = False
+                    elif not rest:
+                        result.append(ch)
+                        in_string = False
+                    else:
+                        result.append('\\"')
+            elif ch == '\u201c':
+                # 中文左引号在字符串内部 → 内容中的装饰引号，转义
+                result.append('\\"')
+            elif ch == '\u201d':
+                # 中文右引号在字符串内部
+                if opened_by_chinese:
+                    # 字符串由 \u201c 开启 → \u201d 是字符串结束符
+                    result.append('"')
+                    in_string = False
+                else:
+                    # 字符串由 ASCII " 开启 → \u201d 是内容，转义
+                    result.append('\\"')
+            elif ch == '\u2018' or ch == '\u2019':
+                # 中文单引号在字符串内部 → 原样保留（JSON允许）
+                result.append(ch)
+            elif ch == '\n' or ch == '\r':
+                # 未转义的换行符 -> 转义
+                result.append('\\n')
+            elif ch == '\t':
+                # 未转义的制表符 -> 转义
+                result.append('\\t')
+            elif ord(ch) < 0x20:
+                # 其他控制字符 -> Unicode转义
+                result.append(f'\\u{ord(ch):04x}')
+            else:
+                result.append(ch)
+
+    cleaned = ''.join(result)
+
+    # 第四步：修复常见的结构问题
+    # 移除 } 或 ] 前多余的逗号
+    cleaned = re.sub(r',\s*([}\]])', r'\1', cleaned)
+
+    # 第五步：尝试解析
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        logger.warning(f"智能解析首次失败: {e}")
+
+    # 第六步：截断恢复 —— JSON可能不完整，尝试截取到最后完整的对象
+    # 使用反向扫描找到最后一个完整的 }（正确处理嵌套和字符串内的花括号）
+    try:
+        last_complete = _find_last_complete_brace(cleaned)
+        if last_complete > 0:
+            truncated = cleaned[:last_complete + 1]
+            # 移除尾部的逗号
+            truncated = truncated.rstrip().rstrip(',')
+            # 确保数组闭合
+            if not truncated.rstrip().endswith(']'):
+                truncated += '\n]'
+            result_truncated = json.loads(truncated)
+            logger.info(f"截断恢复成功，提取了 {len(result_truncated)} 个完整对象")
+            return result_truncated
+    except json.JSONDecodeError as e2:
+        logger.warning(f"截断恢复也失败: {e2}")
+
+    # 第七步：降级尝试 —— 简单替换所有中文标点后再解析
+    fallback = cleaned
+    fallback = fallback.replace('\u2018', "'").replace('\u2019', "'")
+    fallback = fallback.replace('\uff0c', ',')   # 全角逗号
+    fallback = fallback.replace('\uff1a', ':')   # 全角冒号
+    try:
+        return json.loads(fallback)
+    except json.JSONDecodeError:
+        pass
+
+    # 第八步：降级+截断组合
+    try:
+        last_complete = _find_last_complete_brace(fallback)
+        if last_complete > 0:
+            truncated = fallback[:last_complete + 1].rstrip().rstrip(',')
+            if not truncated.rstrip().endswith(']'):
+                truncated += '\n]'
+            result_truncated = json.loads(truncated)
+            logger.info(f"降级+截断恢复成功，提取了 {len(result_truncated)} 个完整对象")
+            return result_truncated
+    except json.JSONDecodeError:
+        pass
+
+    logger.error(f"智能解析全部尝试失败")
+    logger.error(f"清理后JSON前800字符: {cleaned[:800]}")
+
+    # 保存调试文件
+    debug_file = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'debug_last_json.json')
+    try:
+        os.makedirs(os.path.dirname(debug_file), exist_ok=True)
+        with open(debug_file, 'w', encoding='utf-8') as f:
+            f.write(cleaned)
+    except Exception:
+        pass
+
+    return None
+
+
+def _find_last_complete_brace(s: str) -> int:
+    """
+    正向扫描字符串，找到最后一个完整的 } （不在字符串内，且嵌套深度为0）。
+
+    与 rfind('}') 不同，此方法正确处理：
+    - 字符串内的花括号（如 {"key": "value with { brace }"}）
+    - 转义引号（如 {"key": "value with \\" quote"}）
+    - 不完整的对象（截断的JSON中最后一个 } 可能属于不完整的对象）
+
+    Returns:
+        最后一个完整 } 的索引，未找到返回 -1
+    """
+    in_str = False
+    escaping = False
+    last_brace = -1
+    depth = 0
+
+    for i, ch in enumerate(s):
+        if escaping:
+            escaping = False
+            continue
+
+        if in_str:
+            if ch == '\\':
+                escaping = True
+            elif ch == '"':
+                in_str = False
+        else:
+            if ch == '"':
+                in_str = True
+            elif ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    last_brace = i
+
+    return last_brace
+
+
+def _generate_hot_topics_by_keywords(keywords: list, topic_name: str) -> list:
+    """
+    基于关键词列表生成热点话题
+    
+    Args:
+        keywords: 关键词列表，如 ['责任', '担当', '使命', '奉献']
+        topic_name: 主题名称，如 '责任担当'
+    
+    Returns:
+        热点话题列表
+    """
+    llm = _get_llm()
+    current_date = datetime.now().strftime('%Y年%m月%d日')
+    
+    system_prompt = """你是一位资深的高考语文命题研究专家，擅长根据特定主题关键词设计高考作文题目。
+
+请根据给定的关键词，设计3-5个与主题紧密相关的高考作文命题。
+
+**重要要求：**
+- 作文题目必须紧扣给定的主题和关键词
+- 材料要有时代感和社会现实意义
+- 写作角度要有深度，能引导学生思考
+- 难度适中，适合高中学生
+- **创新性：请发挥创意，避免生成套路化、模板化的命题**
+
+**严格的JSON格式要求（必须遵守）：**
+1. 只返回纯JSON数组，不要包含任何markdown标记（如```json）
+2. **禁止在字符串值中使用中文引号（\u201c\u201d\u2018\u2019），必须使用英文引号并用反斜杠转义（\\"）或直接省略引号**
+3. 所有标点符号必须使用英文半角格式（逗号用, 冒号用: 句号用.）
+4. 不要在字符串值中使用换行符，如需换行请用\\n
+
+**重要：请严格按照以下JSON格式返回，不要包含任何其他文字：**
+[
+  {
+    "title": "话题标题",
+    "category": "主题分类",
+    "keywords": ["关键词1", "关键词2", "关键词3"],
+    "news_summary": "新闻摘要内容",
+    "essay_prompt": "完整的作文题目材料和要求",
+    "writing_angles": ["角度1", "角度2", "角度3"],
+    "reference_materials": ["素材1", "素材2", "素材3"],
+    "difficulty": "中等",
+    "relevance_score": 8
+  }
+]"""
+
+    user_query = f"""请根据以下关键词生成高考作文命题预测。
+
+**当前日期：{current_date}**
+
+**主题：{topic_name}**
+**关键词：{', '.join(keywords)}**
+
+**特别要求：**
+- 所有命题必须紧紧围绕"{topic_name}"这个主题
+- 充分利用关键词 '{', '.join(keywords)}' 的内涵和外延
+- 从不同角度切入（个人成长、社会责任、历史使命、时代发展等）
+- 命题材料应具体、有故事性，能引发学生深入思考
+- 体现该主题在当代社会的重要意义
+
+请直接返回JSON数组，确保：
+1. 生成3-5个高质量话题
+2. 所有字段都必须存在
+3. relevance_score范围是1-10
+4. difficulty只能是：容易/中等/较难
+5. category字段统一设置为："{topic_name}"
+"""
+
+    logger.info(f"🤖 [{topic_name}] 正在调用LLM生成基于关键词的热点话题（keywords={keywords}）...")
+    try:
+        import time as time_module
+        llm_start = time_module.time()
+        response = llm.chat(
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_query},
+            ],
+            temperature=0.7,
+            num_predict=2048,
+        )
+        llm_elapsed = time_module.time() - llm_start
+        logger.info(f"✅ [{topic_name}] LLM响应接收成功（耗时 {llm_elapsed:.1f}秒）")
+    except Exception as e:
+        logger.error(f"❌ [{topic_name}] LLM调用失败: {e}", exc_info=True)
+        raise
+    
+    # 解析 JSON 响应
+    try:
+        if isinstance(response, dict):
+            if 'message' in response and 'content' in response['message']:
+                content = response['message']['content'].strip()
+            elif 'choices' in response and len(response['choices']) > 0:
+                content = response['choices'][0].get('text', '').strip()
+            elif 'content' in response:
+                content = response['content'].strip()
+            else:
+                logger.error(f"无法从字典响应中提取内容，可用键: {list(response.keys())}")
+                return []
+        else:
+            content = str(response).strip()
+        
+        logger.info(f"📝 [{topic_name}] 提取到响应内容，长度: {len(content)}")
+        logger.debug(f"LLM原始响应前500字符: {content[:500]}")
+        
+        # 使用智能JSON解析器处理LLM返回的内容
+        topics = _safe_parse_json_array(content)
+        
+        if topics is None:
+            logger.warning(f"⚠️ [{topic_name}] 智能解析失败，无法提取有效JSON")
+            return []
+        
+        logger.info(f"✅ [{topic_name}] JSON解析成功，共 {len(topics)} 个话题")
+        
+        # 验证数据结构
+        validated_topics = []
+        required_fields = ['title', 'essay_prompt']
+        
+        for i, topic in enumerate(topics):
+            if not isinstance(topic, dict):
+                continue
+            
+            missing_fields = [f for f in required_fields if f not in topic]
+            if missing_fields:
+                continue
+            
+            topic.setdefault('category', topic_name)
+            topic.setdefault('keywords', keywords[:3])
+            topic.setdefault('news_summary', '暂无摘要')
+            topic.setdefault('writing_angles', ['从多个角度思考这个话题'])
+            topic.setdefault('reference_materials', ['关注相关新闻和时事报道'])
+            topic.setdefault('difficulty', '中等')
+            
+            score = topic.get('relevance_score', 5)
+            if not isinstance(score, (int, float)) or score < 1 or score > 10:
+                topic['relevance_score'] = 5
+            
+            validated_topics.append(topic)
+        
+        logger.info(f"✅ [{topic_name}] 验证完成，有效话题数: {len(validated_topics)}")
+        return validated_topics
+    
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ [{topic_name}] JSON解析失败: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"❌ [{topic_name}] 处理响应失败: {e}", exc_info=True)
         return []
 
 
@@ -911,15 +1297,73 @@ def add_favorite():
     if already_favorited:
         return jsonify({'success': False, 'message': '该话题已在收藏中'}), 409
     
-    # 添加收藏时间
+    # 添加收藏时间和来源标识
     topic['favorited_at'] = datetime.now().isoformat()
+    if 'source' not in topic:
+        topic['source'] = 'non_rag'
     favorites.append(topic)
     _save_favorites(favorites)
     
-    logger.info(f"收藏话题: {topic_title}")
+    logger.info(f"收藏话题: {topic_title} (来源: {topic.get('source', 'non_rag')})")
     return jsonify({
         'success': True,
         'message': '收藏成功',
+        'total': len(favorites)
+    })
+
+
+@hot_topics_bp.route('/favorite-all', methods=['POST'])
+def add_all_favorites():
+    """
+    一键收藏所有话题（批量收藏）
+    
+    Request Body:
+        topics: 话题对象数组
+    
+    Returns:
+        批量收藏结果
+    """
+    data = request.get_json() or {}
+    topics = data.get('topics', [])
+    
+    if not topics:
+        return jsonify({'error': '请提供话题列表'}), 400
+    
+    favorites = _load_favorites()
+    existing_titles = {f.get('title', '') for f in favorites}
+    
+    added_count = 0
+    skipped_count = 0
+    
+    for topic in topics:
+        if not isinstance(topic, dict):
+            continue
+        
+        title = topic.get('title', '')
+        if not title:
+            continue
+        
+        # 跳过已收藏的
+        if title in existing_titles:
+            skipped_count += 1
+            continue
+        
+        # 添加收藏时间和来源标识
+        topic['favorited_at'] = datetime.now().isoformat()
+        if 'source' not in topic:
+            topic['source'] = 'non_rag'
+        favorites.append(topic)
+        existing_titles.add(title)
+        added_count += 1
+    
+    _save_favorites(favorites)
+    
+    logger.info(f"一键收藏完成: 新增 {added_count} 个，跳过 {skipped_count} 个（已存在）")
+    return jsonify({
+        'success': True,
+        'message': f'成功收藏 {added_count} 个话题，{skipped_count} 个已在收藏中',
+        'added': added_count,
+        'skipped': skipped_count,
         'total': len(favorites)
     })
 
@@ -987,20 +1431,24 @@ def get_favorites():
             except Exception:
                 continue
     
-    # 添加练习次数到每个收藏
+    # 添加练习次数到每个收藏，并回填旧数据的 source 字段
     for fav in favorites:
         title = fav.get('title', '')
         fav['practice_count'] = practice_count_map.get(title, 0)
+        # 回填旧数据：没有 source 字段的一律标记为 non_rag
+        if 'source' not in fav:
+            fav['source'] = 'non_rag'
     
-    # 排序
+    # 排序：RAG 来源优先排在前面
+    is_rag = lambda x: 0 if x.get('source', 'non_rag') == 'rag' else 1
     if sort_by == 'title':
-        favorites.sort(key=lambda x: x.get('title', ''))
+        favorites.sort(key=lambda x: (is_rag(x), x.get('title', '')))
     elif sort_by == 'relevance_score':
-        favorites.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+        favorites.sort(key=lambda x: (is_rag(x), -x.get('relevance_score', 0)))
     elif sort_by == 'practice_count':
-        favorites.sort(key=lambda x: x.get('practice_count', 0), reverse=True)
-    else:  # favorited_at
-        favorites.sort(key=lambda x: x.get('favorited_at', ''), reverse=True)
+        favorites.sort(key=lambda x: (is_rag(x), -x.get('practice_count', 0)))
+    else:  # favorited_at: 同一来源内按时间降序
+        favorites.sort(key=lambda x: (is_rag(x), x.get('favorited_at', '')))
     
     return jsonify({
         'success': True,

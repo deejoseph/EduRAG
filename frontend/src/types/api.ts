@@ -97,6 +97,22 @@ export interface SearchResponse {
   answer?: string;
 }
 
+// === 热门主题 ===
+
+export interface HotTopic {
+  name: string;
+  keywords: string[];
+  count: number;
+  max_score: number;
+  description: string;
+}
+
+export interface HotTopicsResponse {
+  success: boolean;
+  topics: HotTopic[];
+  total_topics: number;
+}
+
 // === 系统 ===
 
 export interface HealthResponse {

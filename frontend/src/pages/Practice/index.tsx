@@ -133,7 +133,7 @@ const PracticePage: React.FC = () => {
               loading={favoritesLoading}
             >
               {favorites.length === 0 ? (
-                <Text type="secondary">暂无收藏的题目，请先到"命题热点"页面收藏感兴趣的话题</Text>
+                <Text type="secondary">暂无收藏的题目，请先到"命题热点"或"知识检索"页面收藏感兴趣的话题</Text>
               ) : (
                 <Select
                   placeholder="选择要练习的题目..."
@@ -151,7 +151,15 @@ const PracticePage: React.FC = () => {
                   options={favorites.map(f => ({
                     label: (
                       <Space direction="vertical" size={0} style={{ width: '100%' }}>
-                        <Text strong>{f.title}</Text>
+                        <Space size={4} align="center">
+                          <Text strong>{f.title}</Text>
+                          <Tag 
+                            color={f.source === 'rag' ? 'green' : 'orange'} 
+                            style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}
+                          >
+                            {f.source === 'rag' ? 'RAG' : 'AI预测'}
+                          </Tag>
+                        </Space>
                         <Space size="small">
                           <Badge 
                             count={`已练习${f.practice_count || 0}次`} 
