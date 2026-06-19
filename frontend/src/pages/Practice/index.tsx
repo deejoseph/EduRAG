@@ -124,7 +124,7 @@ const PracticePage: React.FC = () => {
                   <BookOutlined />
                   <span>从题库选择题目</span>
                   {favorites.length > 0 && (
-                    <Badge count={favorites.length} style={{ backgroundColor: '#52c41a' }} />
+                    <Badge count={favorites.length} overflowCount={99999} style={{ backgroundColor: '#52c41a' }} />
                   )}
                 </Space>
               }
