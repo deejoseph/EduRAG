@@ -77,10 +77,12 @@ def query():
     """
     data = request.get_json()
     if not data:
+        logger.error("请求体为空")
         return error_response("请求体不能为空")
 
     query_text = data.get('query')
     if not query_text:
+        logger.error("缺少 query 字段")
         return error_response("必须提供 query 字段")
 
     collection = data.get('collection', 'chinese_essays')
@@ -90,6 +92,9 @@ def query():
     role = data.get('role', '教育助手')
     expertise = data.get('expertise', '语文教学与写作指导')
     rerank = data.get('rerank', None)  # None=用全局配置，True/False=覆盖
+    
+    # 记录请求参数
+    logger.info(f"🔍 收到检索请求: query='{query_text}', collection={collection}, top_k={top_k}, threshold={score_threshold}, with_llm={with_llm}")
 
     # 解析过滤条件
     filters = data.get('filters', {})
@@ -103,6 +108,9 @@ def query():
         subject=filters.get('subject'),
         source_type=filters.get('source_type'),
     )
+    
+    if filters:
+        logger.info(f"📋 应用过滤条件: {filters}")
 
     try:
         if with_llm:
@@ -132,6 +140,8 @@ def query():
                 )
             ]
 
+            logger.info(f"✅ RAG检索完成，返回 {len(results)} 条结果")
+
             return success_response({
                 'results': results,
                 'count': len(results),
@@ -145,8 +155,10 @@ def query():
 
             # 确保集合存在
             if not db.collection_exists(collection):
+                logger.error(f"集合 '{collection}' 不存在")
                 return error_response(f"集合 '{collection}' 不存在")
 
+            logger.info(f"🔎 执行纯向量检索（无LLM）...")
             result = retriever.search(
                 collection_name=collection,
                 query=query_text,
@@ -169,13 +181,20 @@ def query():
                 )
             ]
 
+            logger.info(f"✅ 向量检索完成，返回 {len(results)} 条结果")
+            if results:
+                logger.info(f"   最高相似度: {max(r['score'] for r in results):.4f}")
+                logger.info(f"   最低相似度: {min(r['score'] for r in results):.4f}")
+            else:
+                logger.warning(f"⚠️ 未找到符合条件的结果（阈值={score_threshold}）")
+
             return success_response({
                 'results': results,
                 'count': len(results),
             })
 
     except Exception as e:
-        logger.error(f"检索失败: {e}")
+        logger.error(f"❌ 检索失败: {e}", exc_info=True)
         return error_response(f"服务端错误: {e}", 500)
 
 
