@@ -45,9 +45,12 @@ echo [3/4] 启动后端 API 服务 (port 5000, pixel_ai GPU)...
 cd /d "%PROJECT_DIR%"
 
 :: 检查并清理占用 5000 端口的旧进程
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5000 ^| findstr LISTENING') do (
-    echo       检测到旧的后端进程 (PID: %%a)，正在终止...
-    taskkill /F /PID %%a >nul 2>&1
+netstat -ano | findstr :5000 | findstr LISTENING >nul 2>&1
+if !errorlevel! equ 0 (
+    echo       检测到旧的后端进程，正在清理...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5000 ^| findstr LISTENING') do (
+        taskkill /F /PID %%a >nul 2>&1
+    )
     timeout /t 2 /nobreak >nul
     echo       旧进程已清理
 )
