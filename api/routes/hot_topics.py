@@ -1431,12 +1431,22 @@ def get_favorites():
             except Exception:
                 continue
     
-    # 添加练习次数到每个收藏，并回填旧数据的 source 字段
+    # RAG 热门主题类别名集合（覆盖 search.py 定义和实际 API 返回的所有名称）
+    rag_category_names = {
+        '家国情怀', '责任担当', '文化传承', '科技创新',
+        '生态文明', '青年成长', '人生价值', '时代精神',
+        '青年担当', '绿色成长', '科技伦理', '核心价值',
+    }
+    
+    # 添加练习次数，并根据类别动态标记 RAG 来源
     for fav in favorites:
         title = fav.get('title', '')
         fav['practice_count'] = practice_count_map.get(title, 0)
-        # 回填旧数据：没有 source 字段的一律标记为 non_rag
-        if 'source' not in fav:
+        # 如果题目的类别匹配 RAG 热门主题类别，标记为 rag
+        fav_category = fav.get('category', '')
+        if fav_category in rag_category_names:
+            fav['source'] = 'rag'
+        elif 'source' not in fav:
             fav['source'] = 'non_rag'
     
     # 排序：RAG 来源优先排在前面
