@@ -31,16 +31,29 @@ if %errorlevel% neq 0 (
 )
 
 :: ── 2. 预加载模型 ──────────────────────────
-echo [2/4] 预加载 LLM 模型 (qwen3:8b)...
-curl -s http://localhost:11434/api/generate -d "{\"model\":\"qwen3:8b\",\"prompt\":\"hi\",\"stream\":false}" >nul 2>&1
+echo [2/4] 读取配置文件...
+:: 使用Python从config.yaml读取模型名称
+for /f "usebackq tokens=*" %%a in (`"%PYTHON_PATH%" -c "import yaml; c=yaml.safe_load(open('config.yaml', encoding='utf-8')); print(c.get('ollama',{}).get('model','gemma3:4b'))"`) do set "MODEL_NAME=%%a"
+if "%MODEL_NAME%"=="" set "MODEL_NAME=gemma3:4b"
+
+echo       预加载 LLM 模型 (%MODEL_NAME%)...
+curl -s http://localhost:11434/api/generate -d "{\"model\":\"%MODEL_NAME%\",\"prompt\":\"hi\",\"stream\":false}" >nul 2>&1
 echo       模型已就绪
 
 :: ── 3. 启动后端 Flask API ──────────────────
 echo [3/4] 启动后端 API 服务 (port 5000, pixel_ai GPU)...
 cd /d "%PROJECT_DIR%"
 
-:: 直接使用 pixel_ai 环境的 Python（包含 CUDA 版 PyTorch）
-start "EduRAG Backend" cmd /c "cd /d "%PROJECT_DIR%" && title EduRAG Backend && "%PYTHON_PATH%" -m api.app && pause"
+:: 检查并清理占用 5000 端口的旧进程
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5000 ^| findstr LISTENING') do (
+    echo       检测到旧的后端进程 (PID: %%a)，正在终止...
+    taskkill /F /PID %%a >nul 2>&1
+    timeout /t 2 /nobreak >nul
+    echo       旧进程已清理
+)
+
+:: 使用 start_backend.py 启动（自动设置HF_ENDPOINT环境变量）
+start "EduRAG Backend" cmd /c "cd /d "%PROJECT_DIR%" && title EduRAG Backend && "%PYTHON_PATH%" start_backend.py && pause"
 
 :: 等待后端启动
 echo       等待后端就绪...
