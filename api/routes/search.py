@@ -86,8 +86,8 @@ def query():
         return error_response("必须提供 query 字段")
 
     collection = data.get('collection', 'chinese_essays')
-    top_k = data.get('top_k', 10)  # 增加到10条
-    score_threshold = data.get('score_threshold', 0.05)  # 降低到0.05，允许更多结果
+    top_k = data.get('top_k', 10)
+    score_threshold = data.get('score_threshold', 0.01)  # 降低到0.01，支持更多查询
     with_llm = data.get('with_llm', False)
     role = data.get('role', '教育助手')
     expertise = data.get('expertise', '语文教学与写作指导')

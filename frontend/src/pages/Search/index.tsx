@@ -45,7 +45,7 @@ const Search: React.FC = () => {
   const [filters, setFilters] = useState<Filters>({});
   const [withLlm, setWithLlm] = useState(false);
   const [topK, setTopK] = useState(10);
-  const [scoreThreshold, setScoreThreshold] = useState(0.1); // 降低到0.1以获得更多结果
+  const [scoreThreshold, setScoreThreshold] = useState(0.01); // 降低到0.01以支持更多查询
 
   const updateFilter = (key: keyof Filters, value: any) => {
     setFilters(prev => {
