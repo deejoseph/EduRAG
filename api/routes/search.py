@@ -3,14 +3,20 @@
 提供通用的语义检索和集合管理接口
 """
 
+import os
 import logging
-from flask import Blueprint, request, jsonify, current_app
+from pathlib import Path
+from urllib.parse import unquote
+from flask import Blueprint, request, jsonify, current_app, send_file, abort
 
 from api.routes import build_where_filter
 
 logger = logging.getLogger(__name__)
 
 search_bp = Blueprint('search', __name__)
+
+# 文档存储根目录
+DOCS_DIR = Path(__file__).parent.parent.parent / 'data' / 'docs'
 
 
 def get_db():
@@ -395,4 +401,221 @@ def hot_topics():
     
     except Exception as e:
         logger.error(f"获取热门主题失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)
+
+
+# ─────────────────────────────────────────────────────────
+# GET /search/files/<path:filename>  文档文件访问接口
+# ─────────────────────────────────────────────────────────
+@search_bp.route('/files/<path:subdir>/<filename>', methods=['GET'])
+def serve_file(subdir, filename):
+    """
+    提供文档文件访问服务（智能多目录查找）
+    
+    支持的文件类型：PDF, DOCX, TXT, MD
+    
+    URL 示例：
+    - /search/files/pdfs/高考满分作文精选39篇.pdf
+    - /search/files/docs/专题08 上海卷  2020年高考语文作文解析与范文展示.docx
+    
+    搜索顺序：
+    1. data/docs/<subdir>/<filename> （主要目录）
+    2. data/docs/pdfs/ （PDF 默认目录）
+    3. data/docs/docs/ （DOCX 默认目录）
+    4. data/upload_tmp/ （上传临时目录）
+    5. 外部源目录（如果配置）
+    
+    安全限制：
+    - 只允许访问配置的目录下的文件
+    - 防止目录穿越攻击
+    """
+    try:
+        # URL 解码（处理中文文件名）
+        decoded_filename = unquote(filename)
+        decoded_subdir = unquote(subdir)
+        
+        # 定义可能的搜索根目录（按优先级）
+        search_roots = [
+            DOCS_DIR / 'all',  # 扁平化目录（所有PDF和DOCX文件）- 最高优先级
+            DOCS_DIR / decoded_subdir,  # 请求的子目录
+            DOCS_DIR / 'pdfs',  # PDF 默认目录
+            DOCS_DIR / 'docs',  # DOCX 默认目录（嵌套子目录）
+            DOCS_DIR / 'docs_flat',  # DOCX 扁平目录（所有文件在一层）
+            DOCS_DIR / 'texts',  # TXT 默认目录
+            DOCS_DIR / 'markdowns',  # MD 默认目录
+            Path(__file__).parent.parent.parent / 'data' / 'upload_tmp',  # 上传目录
+        ]
+        
+        # 在所有搜索根目录中查找文件（使用 rglob 全局搜索）
+        file_path = None
+        logger.info(f"开始搜索文件: {decoded_filename}")
+        
+        for root_dir in search_roots:
+            if not root_dir.exists():
+                continue
+            
+            # 使用 rglob 递归搜索
+            matches = list(root_dir.rglob(decoded_filename))
+            if matches:
+                file_path = matches[0]  # 取第一个匹配
+                logger.info(f"找到文件: {file_path}")
+                break
+        
+        if not file_path:
+            logger.warning(f"文件不存在于任何搜索路径: {decoded_filename}")
+            return error_response(f"文件不存在: {decoded_filename}", 404)
+        
+        # 安全检查：确保路径在允许的目录内
+        allowed_dirs = [
+            DOCS_DIR.resolve(),
+            (Path(__file__).parent.parent.parent / 'data' / 'upload_tmp').resolve(),
+        ]
+        try:
+            resolved_path = file_path.resolve()
+            if not any(resolved_path.is_relative_to(allowed_dir) for allowed_dir in allowed_dirs):
+                logger.warning(f"非法文件访问尝试: {resolved_path}")
+                return error_response("禁止访问该文件", 403)
+        except ValueError:
+            logger.warning(f"路径解析失败: {file_path}")
+            return error_response("文件路径错误", 400)
+        
+        # 检查是否为文件（而非目录）
+        if not file_path.is_file():
+            return error_response("不是有效的文件", 400)
+        
+        # 根据文件扩展名设置 MIME 类型
+        ext = file_path.suffix.lower()
+        mime_types = {
+            '.pdf': 'application/pdf',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.doc': 'application/msword',
+            '.txt': 'text/plain; charset=utf-8',
+            '.md': 'text/markdown; charset=utf-8',
+        }
+        
+        mimetype = mime_types.get(ext, 'application/octet-stream')
+        
+        # 发送文件
+        logger.info(f"文件访问: {file_path.relative_to(DOCS_DIR.parent)}")
+        return send_file(
+            str(file_path),
+            mimetype=mimetype,
+            as_attachment=False,  # 在线预览而非下载
+            download_name=file_path.name
+        )
+    
+    except Exception as e:
+        logger.error(f"文件服务错误 ({subdir}/{filename}): {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+# ─────────────────────────────────────────────────────────
+# GET /search/files/list  列出所有可用文档
+# ─────────────────────────────────────────────────────────
+@search_bp.route('/files/list', methods=['GET'])
+def list_files():
+    """
+    列出所有可用的文档文件
+    
+    查询参数：
+    - type: 文件类型过滤 (pdf, docx, txt, md)
+    - recursive: 是否递归列出子目录 (true/false, 默认 true)
+    
+    响应体：
+    {
+        "success": true,
+        "files": [
+            {
+                "name": "高考满分作文精选39篇.pdf",
+                "path": "pdfs/高考满分作文精选39篇.pdf",
+                "size": 1776663,
+                "type": "pdf"
+            }
+        ],
+        "total": 652
+    }
+    """
+    try:
+        # 获取查询参数
+        file_type = request.args.get('type', '').lower()
+        recursive = request.args.get('recursive', 'true').lower() == 'true'
+        
+        files = []
+        
+        if recursive:
+            # 优先使用 all/ 目录（扁平化结构）
+            all_dir = DOCS_DIR / 'all'
+            if all_dir.exists():
+                for filename in all_dir.iterdir():
+                    if not filename.is_file():
+                        continue
+                    
+                    # 文件类型过滤
+                    if file_type and filename.suffix.lower() != f'.{file_type}':
+                        continue
+                    
+                    files.append({
+                        'name': filename.name,
+                        'path': f'all/{filename.name}',
+                        'size': filename.stat().st_size,
+                        'type': filename.suffix.lower().lstrip('.'),
+                    })
+            else:
+                # 如果 all/ 目录不存在，则遍历所有子目录
+                for root, dirs, filenames in os.walk(DOCS_DIR):
+                    for filename in filenames:
+                        file_path = Path(root) / filename
+                        
+                        # 文件类型过滤
+                        if file_type and file_path.suffix.lower() != f'.{file_type}':
+                            continue
+                        
+                        # 计算相对路径
+                        rel_path = file_path.relative_to(DOCS_DIR)
+                        
+                        files.append({
+                            'name': filename,
+                            'path': str(rel_path).replace('\\', '/'),
+                            'size': file_path.stat().st_size,
+                            'type': file_path.suffix.lower().lstrip('.'),
+                        })
+        else:
+            # 仅列出 all/ 目录（扁平化结构）
+            all_dir = DOCS_DIR / 'all'
+            if all_dir.exists():
+                for item in all_dir.iterdir():
+                    if item.is_file():
+                        if file_type and item.suffix.lower() != f'.{file_type}':
+                            continue
+                        
+                        files.append({
+                            'name': item.name,
+                            'path': f'all/{item.name}',
+                            'size': item.stat().st_size,
+                            'type': item.suffix.lower().lstrip('.'),
+                        })
+            else:
+                # 如果 all/ 目录不存在，则列出根目录
+                for item in DOCS_DIR.iterdir():
+                    if item.is_file():
+                        if file_type and item.suffix.lower() != f'.{file_type}':
+                            continue
+                        
+                        files.append({
+                            'name': item.name,
+                            'path': item.name,
+                            'size': item.stat().st_size,
+                            'type': item.suffix.lower().lstrip('.'),
+                        })
+        
+        # 按文件名排序
+        files.sort(key=lambda x: x['name'])
+        
+        return success_response({
+            'files': files,
+            'total': len(files),
+        })
+    
+    except Exception as e:
+        logger.error(f"列出文件失败: {e}")
         return error_response(f"服务端错误: {e}", 500)

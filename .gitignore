@@ -39,6 +39,9 @@ data/chroma_db/
 data/practice_records/
 data/portfolio/
 data/import_progress.json
+data/hot_topics_cache.json
+data/debug_last_json.json
+data/docs/
 test_db/
 
 # Node
