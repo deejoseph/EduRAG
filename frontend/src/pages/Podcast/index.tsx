@@ -24,7 +24,7 @@ const PodcastPage: React.FC = () => {
   const [generateModalVisible, setGenerateModalVisible] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatedScript, setGeneratedScript] = useState<string>('');
-  const [prompt, setPrompt] = useState('请将这些素材整理成一段单人播客文案，风格轻松有趣。注意：不要出现【播客文案】、场景描述、氛围渲染、情绪标注、角色标记、括号符号等多余内容，只保留纯对话文本。');
+  const [prompt, setPrompt] = useState('请将这些素材整理成一段单人播客文案，风格轻松有趣。重要要求：1.不要出现任何括号内容如（笑声）、（掌声）等环境交代；2.不要出现【播客文案】、场景描述、氛围渲染、情绪标注、角色标记等多余内容；3.只保留纯对话文本，直接输出内容即可。');
   const [selectedModel, setSelectedModel] = useState('qwen3:8b');
   
   // TTS语音生成相关状态
@@ -37,6 +37,7 @@ const PodcastPage: React.FC = () => {
   const [guidanceStrength, setGuidanceStrength] = useState(3.5);
   const [audioSegments, setAudioSegments] = useState<Array<{text: string; audio_url?: string; duration?: number; status: 'pending' | 'generating' | 'completed' | 'failed'}>>([]);
   const [savedAudioSegments, setSavedAudioSegments] = useState<Array<{text: string; audio_url?: string; duration?: number; status: 'pending' | 'generating' | 'completed' | 'failed'}>>([]); // 保存的分段数据，关闭弹窗后保留
+  const [fullAudioUrl, setFullAudioUrl] = useState<string | null>(null); // 完整合并音频的URL
   const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);
   const [audioPlayer, setAudioPlayer] = useState<HTMLAudioElement | null>(null);
 
@@ -273,6 +274,12 @@ const PodcastPage: React.FC = () => {
         return updatedSegments;
       });
       
+      // 如果是最后一段，保存完整音频URL
+      if (index === audioSegments.length - 1) {
+        setFullAudioUrl(response.audio_url);
+        console.log('所有段落生成完成，完整音频URL:', response.audio_url);
+      }
+      
       console.log(`第 ${index + 1} 段语音生成完成`);
       
       // 显示成功消息
@@ -371,22 +378,21 @@ const PodcastPage: React.FC = () => {
     }
   };
 
-  // 下载完整音频（拼接所有段落）
+  // 下载完整音频（合并后的）
   const handleDownloadFullAudio = () => {
-    const completedSegments = audioSegments.filter(s => s.status === 'completed' && s.audio_url);
+    // 优先使用完整音频URL
+    const downloadUrl = fullAudioUrl || (audioSegments.find(s => s.status === 'completed' && s.audio_url)?.audio_url);
     
-    if (completedSegments.length === 0) {
+    if (!downloadUrl) {
       message.warning('没有可下载的音频');
       return;
     }
     
-    // 下载第一个音频作为示例（完整拼接需要后端支持）
-    const firstAudio = completedSegments[0].audio_url!;
     const link = document.createElement('a');
-    link.href = firstAudio;
+    link.href = downloadUrl;
     link.download = `podcast_${new Date().getTime()}.wav`;
     link.click();
-    message.success('开始下载');
+    message.success('开始下载完整音频');
   };
 
   // 获取阶段标签颜色
@@ -797,7 +803,7 @@ const PodcastPage: React.FC = () => {
           setTtsModalVisible(false);
           setRefAudioFile(null);
           setCurrentPlayingIndex(null);
-          // 不清空 audioSegments，下次打开时恢复
+          // 不清空 audioSegments 和 fullAudioUrl，下次打开时恢复
         }}
         footer={[
           <Button key="close" onClick={() => {
@@ -807,7 +813,7 @@ const PodcastPage: React.FC = () => {
             setTtsModalVisible(false);
             setRefAudioFile(null);
             setCurrentPlayingIndex(null);
-            // 不清空 audioSegments，下次打开时恢复
+            // 不清空 audioSegments 和 fullAudioUrl，下次打开时恢复
           }}>
             关闭
           </Button>,

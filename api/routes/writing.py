@@ -770,6 +770,41 @@ def generate_podcast_script():
         
         full_context = "\n\n".join(context_parts)
         
+        # 基于素材主题进行RAG检索，获取相关知识库内容
+        rag_context = ""
+        try:
+            from flask import current_app
+            app_config = current_app.config.get('edurag', {})
+            retriever = app_config.get('retriever')
+            
+            if retriever:
+                # 提取所有素材的主题作为查询关键词
+                topics = [mat['topic'] for mat in materials if mat.get('topic')]
+                query = " ".join(topics[:3])  # 使用前3个主题作为查询
+                
+                logger.info(f"基于主题进行RAG检索: {query}")
+                
+                # 检索相关知识库内容
+                results = retriever.search(
+                    query=query,
+                    collection_name='chinese_essays',
+                    top_k=5,
+                    score_threshold=0.3
+                )
+                
+                if results:
+                    rag_parts = []
+                    for i, result in enumerate(results, 1):
+                        content = result.get('content', '')
+                        if content and len(content) > 50:  # 过滤太短的内容
+                            rag_parts.append(f"相关知识{i}: {content[:200]}...")
+                    
+                    if rag_parts:
+                        rag_context = "\n\n".join(rag_parts)
+                        logger.info(f"RAG检索到 {len(rag_parts)} 条相关知识")
+        except Exception as e:
+            logger.warning(f"RAG检索失败: {e}，将仅使用素材生成")
+        
         # 使用共享的LLM实例（避免重复创建导致的内存泄漏）
         from flask import current_app
         app_config = current_app.config.get('edurag', {})
@@ -794,6 +829,8 @@ def generate_podcast_script():
 以下是参考素材：
 
 {full_context}
+
+{f'以下是相关知识库内容（供参考）：\n\n{rag_context}' if rag_context else ''}
 
 请基于以上素材生成播客文案："""
         
