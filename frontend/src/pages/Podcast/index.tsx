@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Tag, Button, Space, Typography, Empty, Modal, message, Badge, Input, Select, Upload, Progress, Divider, Tabs, List } from 'antd';
-import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined, CopyOutlined, EditOutlined } from '@ant-design/icons';
+import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined, CopyOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons';
 import { writingApi } from '../../api/writing';
 import type { PodcastMaterial, PodcastScript } from '../../api/writing';
 
@@ -313,13 +313,18 @@ const PodcastPage: React.FC = () => {
       setGeneratedScript(response.script);
       message.success(`成功生成播客文案（基于${response.materials_count}个素材）`);
       
-      // 保存 script_id（后端已自动保存到数据库）
+      // 检查是否保存到数据库
       if (response.script_metadata) {
         setCurrentScriptId(response.script_metadata.script_id);
-        console.log('[Podcast] 文案已保存到数据库:', response.script_metadata.script_id);
+        console.log('[Podcast] ✅ 文案已自动保存到数据库:', response.script_metadata.script_id);
+        message.success(`✅ 文案已自动保存到“我的文案”`);
+      } else {
+        // 后端保存失败，提示用户手动保存
+        console.warn('[Podcast] ⚠️ 文案未保存到数据库（script_metadata 为 null）');
+        message.warning('⚠️ 文案生成成功，但未自动保存到数据库。请点击下方“保存到我的文案”按钮手动保存。', 5);
       }
       
-      // 刷新文案列表
+      // 刷新文案列表（无论是否保存成功）
       loadScripts();
       
       // 清除旧的TTS分段数据，因为文案已更新
@@ -336,6 +341,43 @@ const PodcastPage: React.FC = () => {
       message.error('生成播客文案失败');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // 手动保存文案到数据库
+  const handleSaveScript = async () => {
+    if (!generatedScript) {
+      message.warning('没有可保存的文案');
+      return;
+    }
+    
+    try {
+      console.log('[Podcast] 手动保存文案...');
+      message.loading('正在保存...', 0);
+      
+      // 重新生成一次（后端会自动保存）
+      const response = await writingApi.generatePodcastScript({
+        material_ids: selectedRowKeys,
+        prompt: prompt,
+        model: selectedModel,
+      });
+      
+      // 关闭loading
+      message.destroy();
+      
+      if (response.script_metadata) {
+        setCurrentScriptId(response.script_metadata.script_id);
+        console.log('[Podcast] ✅ 文案已保存到数据库:', response.script_metadata.script_id);
+        message.success(`✅ 文案已保存到“我的文案”`);
+        loadScripts(); // 刷新列表
+      } else {
+        console.error('[Podcast] ❌ 保存失败，script_metadata 为 null');
+        message.error('❌ 保存失败，请检查后端日志');
+      }
+    } catch (error) {
+      message.destroy();
+      console.error('[Podcast] 保存文案失败:', error);
+      message.error('保存文案失败');
     }
   };
 
@@ -1046,6 +1088,18 @@ const PodcastPage: React.FC = () => {
               }}
             >
               导出文案
+            </Button>
+          ),
+          generatedScript && (
+            <Button
+              key="save"
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={handleSaveScript}
+              disabled={!currentScriptId} // 如果已经有 script_id，说明已经保存过
+              style={{ background: 'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)' }}
+            >
+              {currentScriptId ? '✅ 已保存' : '💾 保存到我的文案'}
             </Button>
           ),
         ].filter(Boolean)}
