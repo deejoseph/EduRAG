@@ -32,7 +32,7 @@ const PodcastPage: React.FC = () => {
   const [ttsGenerating, setTtsGenerating] = useState(false);
   const [refAudioFile, setRefAudioFile] = useState<File | null>(null);
   const [savedRefAudioId, setSavedRefAudioId] = useState<string | null>(null); // 已保存的参考音频ID
-  const [refAudios, setRefAudios] = useState<Array<{id: string; name: string}>>([]); // 已保存的音频列表
+  const [refAudios, setRefAudios] = useState<Array<{id: string; name: string; prompt_text?: string}>>([]); // 已保存的音频列表
   const [loadingRefAudios, setLoadingRefAudios] = useState(false);
   const [promptText, setPromptText] = useState('这是一段播客对话');
   const [ttsMode, setTtsMode] = useState<'precise' | 'standard' | 'fast'>('standard');
@@ -1330,12 +1330,14 @@ const PodcastPage: React.FC = () => {
                   beforeUpload={async (file) => {
                     try {
                       message.loading('正在上传并保存...', 0);
-                      const response = await writingApi.uploadRefAudio(file);
+                      
+                      // 同时发送音频文件和当前的提示文本
+                      const response = await writingApi.uploadRefAudio(file, promptText);
                       message.destroy();
                       
                       setSavedRefAudioId(response.id);
                       localStorage.setItem('podcast_ref_audio_id', response.id);
-                      message.success(`✅ 音频已保存: ${response.name}`);
+                      message.success(`✅ 音频及文本已保存: ${response.name}`);
                       
                       // 刷新列表
                       loadRefAudios();
@@ -1374,7 +1376,15 @@ const PodcastPage: React.FC = () => {
                     onChange={(value) => {
                       setSavedRefAudioId(value);
                       localStorage.setItem('podcast_ref_audio_id', value);
-                      message.success('已切换参考音频');
+                      
+                      // 自动填充对应的文本
+                      const selectedAudio = refAudios.find(a => a.id === value);
+                      if (selectedAudio && selectedAudio.prompt_text) {
+                        setPromptText(selectedAudio.prompt_text);
+                        message.success(`已切换参考音频，并自动填充文本`);
+                      } else {
+                        message.success('已切换参考音频');
+                      }
                     }}
                     style={{ width: '100%', marginTop: 8 }}
                     placeholder="选择一个已保存的参考音频"

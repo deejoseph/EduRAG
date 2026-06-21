@@ -1342,13 +1342,14 @@ def generate_podcast_tts():
 @writing_bp.route('/podcast-ref-audios', methods=['GET'])
 def get_podcast_ref_audios():
     """
-    获取已保存的参考音频列表
+    获取已保存的参考音频列表（包含元数据）
     
     返回：
-    - audios: 音频列表，每个包含 id, name, path, created_at
+    - audios: 音频列表，每个包含 id, name, path, prompt_text, created_at
     """
     try:
         import os
+        import json
         from flask import current_app
         
         app_config = current_app.config.get('edurag', {})
@@ -1364,12 +1365,31 @@ def get_podcast_ref_audios():
             if filename.endswith(('.wav', '.mp3', '.m4a', '.flac')):
                 filepath = os.path.join(ref_audio_dir, filename)
                 stat = os.stat(filepath)
+                
+                # 提取ID并查找对应的元数据文件
+                audio_id = os.path.splitext(filename)[0]
+                metadata_file = os.path.join(ref_audio_dir, f"{audio_id}.json")
+                
+                prompt_text = ''
+                original_filename = filename
+                
+                # 如果有元数据文件，读取其中的文本
+                if os.path.exists(metadata_file):
+                    try:
+                        with open(metadata_file, 'r', encoding='utf-8') as f:
+                            metadata = json.load(f)
+                            prompt_text = metadata.get('prompt_text', '')
+                            original_filename = metadata.get('original_filename', filename)
+                    except Exception as e:
+                        logger.warning(f"读取元数据失败 {metadata_file}: {e}")
+                
                 audios.append({
-                    'id': filename,
-                    'name': filename,
+                    'id': audio_id,
+                    'name': original_filename,
                     'path': filepath,
                     'size': stat.st_size,
-                    'created_at': stat.st_ctime
+                    'created_at': stat.st_ctime,
+                    'prompt_text': prompt_text
                 })
         
         # 按创建时间降序排序
@@ -1386,10 +1406,15 @@ def get_podcast_ref_audios():
 @writing_bp.route('/podcast-ref-audios/upload', methods=['POST'])
 def upload_podcast_ref_audio():
     """
-    上传并保存参考音频
+    上传并保存参考音频及其对应的文本
+    
+    请求体（multipart/form-data）：
+    - ref_audio: 音频文件
+    - prompt_text: 音频对应的文本（可选）
     """
     try:
         import os
+        import json
         import time
         import uuid
         from flask import current_app
@@ -1401,6 +1426,9 @@ def upload_podcast_ref_audio():
         if ref_audio_file.filename == '':
             return error_response("参考音频文件名为空", 400)
         
+        # 获取音频对应的文本
+        prompt_text = request.form.get('prompt_text', '')
+        
         app_config = current_app.config.get('edurag', {})
         upload_dir = app_config.get('upload_dir', './uploads')
         ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
@@ -1410,18 +1438,38 @@ def upload_podcast_ref_audio():
         
         # 生成唯一文件名
         ext = os.path.splitext(ref_audio_file.filename)[1]
-        unique_filename = f"{uuid.uuid4().hex}_{int(time.time())}{ext}"
-        filepath = os.path.join(ref_audio_dir, unique_filename)
+        unique_id = f"{uuid.uuid4().hex}_{int(time.time())}"
+        audio_filename = f"{unique_id}{ext}"
+        metadata_filename = f"{unique_id}.json"
         
-        # 保存文件
-        ref_audio_file.save(filepath)
-        logger.info(f"参考音频已保存: {unique_filename}")
+        audio_filepath = os.path.join(ref_audio_dir, audio_filename)
+        metadata_filepath = os.path.join(ref_audio_dir, metadata_filename)
+        
+        # 保存音频文件
+        ref_audio_file.save(audio_filepath)
+        
+        # 保存元数据（包含文本）
+        metadata = {
+            'id': unique_id,
+            'audio_file': audio_filename,
+            'prompt_text': prompt_text,
+            'original_filename': ref_audio_file.filename,
+            'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'timestamp': int(time.time()),
+            'size': os.path.getsize(audio_filepath)
+        }
+        
+        with open(metadata_filepath, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"参考音频已保存: {audio_filename}, 文本长度: {len(prompt_text)}")
         
         return success_response({
-            'id': unique_filename,
-            'name': unique_filename,
-            'path': filepath,
-            'message': '参考音频已保存'
+            'id': unique_id,
+            'name': audio_filename,
+            'path': audio_filepath,
+            'prompt_text': prompt_text,
+            'message': '参考音频及文本已保存'
         })
     
     except Exception as e:
@@ -1432,7 +1480,7 @@ def upload_podcast_ref_audio():
 @writing_bp.route('/podcast-ref-audios/<filename>', methods=['DELETE'])
 def delete_podcast_ref_audio(filename: str):
     """
-    删除指定的参考音频
+    删除指定的参考音频及其元数据
     """
     try:
         import os
@@ -1442,13 +1490,21 @@ def delete_podcast_ref_audio(filename: str):
         upload_dir = app_config.get('upload_dir', './uploads')
         ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
         
-        filepath = os.path.join(ref_audio_dir, filename)
-        
-        if not os.path.exists(filepath):
+        # 删除音频文件
+        audio_filepath = os.path.join(ref_audio_dir, filename)
+        if not os.path.exists(audio_filepath):
             return error_response(f"音频文件不存在: {filename}", 404)
         
-        os.remove(filepath)
-        logger.info(f"已删除参考音频: {filename}")
+        os.remove(audio_filepath)
+        
+        # 删除元数据文件（如果存在）
+        audio_id = os.path.splitext(filename)[0]
+        metadata_filepath = os.path.join(ref_audio_dir, f"{audio_id}.json")
+        if os.path.exists(metadata_filepath):
+            os.remove(metadata_filepath)
+            logger.info(f"已删除参考音频及元数据: {filename}")
+        else:
+            logger.info(f"已删除参考音频: {filename}")
         
         return success_response({'message': f'已删除: {filename}'})
     

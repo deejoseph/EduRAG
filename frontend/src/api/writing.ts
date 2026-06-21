@@ -215,9 +215,12 @@ export const writingApi = {
   getRefAudios: () =>
     apiClient.get<any, RefAudiosListResponse>('/writing/podcast-ref-audios'),
   
-  uploadRefAudio: (file: File) => {
+  uploadRefAudio: (file: File, promptText?: string) => {
     const formData = new FormData();
     formData.append('ref_audio', file);
+    if (promptText) {
+      formData.append('prompt_text', promptText);
+    }
     
     return fetch('/writing/podcast-ref-audios/upload', {
       method: 'POST',
