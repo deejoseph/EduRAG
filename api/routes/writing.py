@@ -1493,6 +1493,74 @@ def upload_podcast_ref_audio():
         return error_response(f"服务端错误: {e}", 500)
 
 
+@writing_bp.route('/podcast-ref-audios/<audio_id>/text', methods=['PUT'])
+def update_podcast_ref_audio_text(audio_id: str):
+    """
+    更新指定参考音频的文本
+    
+    请求体：
+    - prompt_text: 新的文本内容
+    """
+    try:
+        import os
+        import json
+        from flask import current_app, request
+        
+        app_config = current_app.config.get('edurag', {})
+        upload_dir = app_config.get('upload_dir', './uploads')
+        ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
+        
+        # 查找音频文件
+        audio_filepath = None
+        for ext in ['.mp3', '.wav', '.m4a', '.flac']:
+            test_path = os.path.join(ref_audio_dir, f"{audio_id}{ext}")
+            if os.path.exists(test_path):
+                audio_filepath = test_path
+                break
+        
+        if not audio_filepath:
+            return error_response(f"音频文件不存在: {audio_id}", 404)
+        
+        # 获取新的文本
+        data = request.get_json()
+        prompt_text = data.get('prompt_text', '')
+        
+        # 更新元数据文件
+        metadata_filepath = os.path.join(ref_audio_dir, f"{audio_id}.json")
+        if os.path.exists(metadata_filepath):
+            with open(metadata_filepath, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+            
+            metadata['prompt_text'] = prompt_text
+            
+            with open(metadata_filepath, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"已更新参考音频文本: {audio_id}, 文本长度: {len(prompt_text)}")
+        else:
+            # 如果没有元数据文件，创建一个
+            metadata = {
+                'id': audio_id,
+                'audio_file': os.path.basename(audio_filepath),
+                'prompt_text': prompt_text,
+                'original_filename': os.path.basename(audio_filepath),
+                'created_at': '',
+                'timestamp': 0,
+                'size': os.path.getsize(audio_filepath)
+            }
+            
+            with open(metadata_filepath, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"已创建元数据文件: {audio_id}")
+        
+        return success_response({'message': '文本已更新'})
+    
+    except Exception as e:
+        logger.error(f"更新参考音频文本失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
 @writing_bp.route('/podcast-ref-audios/<filename>', methods=['DELETE'])
 def delete_podcast_ref_audio(filename: str):
     """

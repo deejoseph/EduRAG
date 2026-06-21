@@ -235,6 +235,10 @@ export const writingApi = {
     });
   },
   
+  // 更新参考音频的文本
+  updateRefAudioText: (audioId: string, promptText: string) =>
+    apiClient.put<any, { success: boolean; message: string }>(`/writing/podcast-ref-audios/${audioId}/text`, { prompt_text: promptText }),
+  
   deleteRefAudio: (filename: string) =>
     apiClient.delete<any, { success: boolean; message: string }>(`/writing/podcast-ref-audios/${filename}`),
 };
