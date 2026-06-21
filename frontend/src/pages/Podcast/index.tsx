@@ -461,6 +461,21 @@ const PodcastPage: React.FC = () => {
       return;
     }
     
+    // 检查是否有 prompt_text（优先使用当前输入框的值，如果没有则从已保存的音频中获取）
+    let finalPromptText = promptText.trim();
+    
+    if (!finalPromptText) {
+      // 如果当前没有输入文本，尝试从已保存的音频中获取对应的文本
+      const selectedAudio = refAudios.find(a => a.id === savedRefAudioId);
+      if (selectedAudio && selectedAudio.prompt_text) {
+        finalPromptText = selectedAudio.prompt_text;
+        console.log('[TTS] 从已保存的音频中读取 prompt_text:', finalPromptText);
+      } else {
+        message.warning('请输入参考音频对应的文本，或从下拉菜单选择已保存的音频');
+        return;
+      }
+    }
+    
     console.log(`开始生成第 ${index + 1} 段语音...`);
     
     // 如果不是批量生成模式，设置全局loading状态
@@ -515,7 +530,7 @@ const PodcastPage: React.FC = () => {
       const response = await writingApi.generatePodcastTTS({
         text: audioSegments[index].text,  // 从当前状态获取文本
         ref_audio_id: savedRefAudioId,  // 使用已保存的音频ID
-        prompt_text: promptText,  // 使用用户输入的提示文本
+        prompt_text: finalPromptText,  // 使用最终确定的提示文本
         nfe,
         guidance_strength: guidanceStrength,
       });
@@ -588,6 +603,21 @@ const PodcastPage: React.FC = () => {
       return;
     }
     
+    // 检查是否有 prompt_text（优先使用当前输入框的值，如果没有则从已保存的音频中获取）
+    let finalPromptText = promptText.trim();
+    
+    if (!finalPromptText) {
+      // 如果当前没有输入文本，尝试从已保存的音频中获取对应的文本
+      const selectedAudio = refAudios.find(a => a.id === savedRefAudioId);
+      if (selectedAudio && selectedAudio.prompt_text) {
+        finalPromptText = selectedAudio.prompt_text;
+        console.log('[TTS] 从已保存的音频中读取 prompt_text:', finalPromptText);
+      } else {
+        message.warning('请输入参考音频对应的文本，或从下拉菜单选择已保存的音频');
+        return;
+      }
+    }
+    
     setTtsGenerating(true);
     
     try {
@@ -598,7 +628,7 @@ const PodcastPage: React.FC = () => {
       const fullResponse = await writingApi.generatePodcastTTS({
         text: fullText,
         ref_audio_id: savedRefAudioId,  // 使用已保存的音频ID
-        prompt_text: promptText,
+        prompt_text: finalPromptText,  // 使用最终确定的提示文本
         nfe,
         guidance_strength: guidanceStrength,
       });
@@ -624,7 +654,7 @@ const PodcastPage: React.FC = () => {
         const segmentResponse = await writingApi.generatePodcastTTS({
           text: audioSegments[i].text,
           ref_audio_id: savedRefAudioId,  // 使用已保存的音频ID
-          prompt_text: promptText,
+          prompt_text: finalPromptText,  // 使用最终确定的提示文本
           nfe,
           guidance_strength: guidanceStrength,
         });
