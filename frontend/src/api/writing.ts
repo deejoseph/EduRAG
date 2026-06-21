@@ -60,6 +60,61 @@ export interface GeneratePodcastTTSResponse {
   message: string;
 }
 
+// 播客文案类型定义
+export interface PodcastScript {
+  script_id: string;
+  title: string;
+  topic: string;
+  version: number;
+  parent_id?: string | null;
+  status: 'draft' | 'completed' | 'archived';
+  created_at: string;
+  updated_at: string;
+  materials_count: number;
+  model: string;
+  content?: string; // 获取单个文案时包含内容
+}
+
+export interface PodcastScriptsListResponse {
+  success: boolean;
+  scripts: PodcastScript[];
+  count: number;
+}
+
+export interface PodcastScriptDetailResponse {
+  success: boolean;
+  script: PodcastScript;
+}
+
+export interface DuplicateScriptResponse {
+  success: boolean;
+  new_script_id: string;
+  version: number;
+  title: string;
+}
+
+// 参考音频类型定义
+export interface RefAudio {
+  id: string;
+  name: string;
+  path: string;
+  size: number;
+  created_at: number;
+}
+
+export interface RefAudiosListResponse {
+  success: boolean;
+  audios: RefAudio[];
+}
+
+export interface UploadRefAudioResponse {
+  success: boolean;
+  id: string;
+  name: string;
+  path: string;
+  message: string;
+}
+
 export const writingApi = {
   analyze: (params: AnalyzeRequest) =>
     apiClient.post<any, WritingResponse>('/writing/analyze', params),
@@ -97,13 +152,33 @@ export const writingApi = {
     apiClient.delete<any, { success: boolean; message: string }>(`/writing/podcast-materials/${materialId}`),
 
   generatePodcastScript: (params: GeneratePodcastRequest) =>
-    apiClient.post<any, { success: boolean; script: string; ai_model: string; materials_count: number }>('/writing/podcast-generate', params),
+    apiClient.post<any, { success: boolean; script: string; ai_model: string; materials_count: number; script_metadata?: any }>('/writing/podcast-generate', params),
+
+  // 播客文案管理接口
+  getPodcastScripts: (params?: { topic?: string; status?: string; limit?: number }) =>
+    apiClient.get<any, PodcastScriptsListResponse>('/writing/podcast-scripts', { params }),
+
+  getPodcastScript: (scriptId: string) =>
+    apiClient.get<any, PodcastScriptDetailResponse>(`/writing/podcast-scripts/${scriptId}`),
+
+  deletePodcastScript: (scriptId: string) =>
+    apiClient.delete<any, { success: boolean; message: string }>(`/writing/podcast-scripts/${scriptId}`),
+
+  duplicatePodcastScript: (scriptId: string) =>
+    apiClient.post<any, DuplicateScriptResponse>(`/writing/podcast-scripts/${scriptId}/duplicate`),
 
   // TTS语音生成接口（使用fetch避免axios问题）
-  generatePodcastTTS: (params: GeneratePodcastTTSRequest) => {
+  generatePodcastTTS: (params: GeneratePodcastTTSRequest | { text: string; ref_audio_id: string; prompt_text: string; nfe?: number; guidance_strength?: number }) => {
     const formData = new FormData();
     formData.append('text', params.text);
-    formData.append('ref_audio', params.ref_audio);
+    
+    // 支持两种模式：上传文件或引用已保存的音频ID
+    if ('ref_audio' in params) {
+      formData.append('ref_audio', params.ref_audio);
+    } else if ('ref_audio_id' in params) {
+      formData.append('ref_audio_id', params.ref_audio_id);
+    }
+    
     formData.append('prompt_text', params.prompt_text);
     if (params.nfe !== undefined) formData.append('nfe', String(params.nfe));
     if (params.guidance_strength !== undefined) formData.append('guidance_strength', String(params.guidance_strength));
@@ -135,4 +210,28 @@ export const writingApi = {
       throw error;
     });
   },
+  
+  // 参考音频管理接口
+  getRefAudios: () =>
+    apiClient.get<any, RefAudiosListResponse>('/writing/podcast-ref-audios'),
+  
+  uploadRefAudio: (file: File) => {
+    const formData = new FormData();
+    formData.append('ref_audio', file);
+    
+    return fetch('/writing/podcast-ref-audios/upload', {
+      method: 'POST',
+      body: formData,
+    })
+    .then(async response => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      return data as UploadRefAudioResponse;
+    });
+  },
+  
+  deleteRefAudio: (filename: string) =>
+    apiClient.delete<any, { success: boolean; message: string }>(`/writing/podcast-ref-audios/${filename}`),
 };

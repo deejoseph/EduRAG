@@ -31,6 +31,9 @@ const PodcastPage: React.FC = () => {
   const [ttsModalVisible, setTtsModalVisible] = useState(false);
   const [ttsGenerating, setTtsGenerating] = useState(false);
   const [refAudioFile, setRefAudioFile] = useState<File | null>(null);
+  const [savedRefAudioId, setSavedRefAudioId] = useState<string | null>(null); // 已保存的参考音频ID
+  const [refAudios, setRefAudios] = useState<Array<{id: string; name: string}>>([]); // 已保存的音频列表
+  const [loadingRefAudios, setLoadingRefAudios] = useState(false);
   const [promptText, setPromptText] = useState('这是一段播客对话');
   const [ttsMode, setTtsMode] = useState<'precise' | 'standard' | 'fast'>('standard');
   const [nfe, setNfe] = useState(22); // 增加NFE提高音质，减少破音
@@ -53,10 +56,16 @@ const PodcastPage: React.FC = () => {
       const savedScript = localStorage.getItem('podcast_generated_script');
       const savedSegments = localStorage.getItem('podcast_saved_segments');
       const savedFullUrl = localStorage.getItem('podcast_full_audio_url');
+      const savedRefAudioId = localStorage.getItem('podcast_ref_audio_id'); // 恢复参考音频ID
       
       if (savedScript) {
         console.log('[Podcast] 从 localStorage 恢复文案:', savedScript.length, '字符');
         setGeneratedScript(savedScript);
+      }
+      
+      if (savedRefAudioId) {
+        console.log('[Podcast] 从 localStorage 恢复参考音频ID:', savedRefAudioId);
+        setSavedRefAudioId(savedRefAudioId);
       }
       
       if (savedSegments) {
@@ -99,6 +108,20 @@ const PodcastPage: React.FC = () => {
       message.error('加载文案列表失败');
     } finally {
       setLoadingScripts(false);
+    }
+  };
+
+  // 加载参考音频列表
+  const loadRefAudios = async () => {
+    setLoadingRefAudios(true);
+    try {
+      const response = await writingApi.getRefAudios();
+      setRefAudios(response.audios || []);
+      console.log('[Podcast] 加载参考音频列表:', response.audios?.length || 0, '个');
+    } catch (error) {
+      console.error('加载参考音频列表失败:', error);
+    } finally {
+      setLoadingRefAudios(false);
     }
   };
 
@@ -188,6 +211,7 @@ const PodcastPage: React.FC = () => {
   useEffect(() => {
     loadMaterials();
     loadScripts(); // 加载文案列表
+    loadRefAudios(); // 加载参考音频列表
     
     // 检查是否有未删除的文案（localStorage），如果有则自动打开TTS弹窗
     const checkSavedScript = () => {
@@ -432,8 +456,8 @@ const PodcastPage: React.FC = () => {
 
   // 生成单个段落的语音
   const handleGenerateSegmentAudio = async (index: number) => {
-    if (!refAudioFile) {
-      message.warning('请先上传参考音频');
+    if (!savedRefAudioId) {
+      message.warning('请先上传或选择参考音频');
       return;
     }
     
@@ -490,7 +514,7 @@ const PodcastPage: React.FC = () => {
       // 直接调用API
       const response = await writingApi.generatePodcastTTS({
         text: audioSegments[index].text,  // 从当前状态获取文本
-        ref_audio: refAudioFile,
+        ref_audio_id: savedRefAudioId,  // 使用已保存的音频ID
         prompt_text: promptText,  // 使用用户输入的提示文本
         nfe,
         guidance_strength: guidanceStrength,
@@ -559,8 +583,8 @@ const PodcastPage: React.FC = () => {
 
   // 批量生成所有段落的语音
   const handleGenerateAllAudio = async () => {
-    if (!refAudioFile) {
-      message.warning('请先上传参考音频');
+    if (!savedRefAudioId) {
+      message.warning('请先上传或选择参考音频');
       return;
     }
     
@@ -573,7 +597,7 @@ const PodcastPage: React.FC = () => {
       
       const fullResponse = await writingApi.generatePodcastTTS({
         text: fullText,
-        ref_audio: refAudioFile,
+        ref_audio_id: savedRefAudioId,  // 使用已保存的音频ID
         prompt_text: promptText,
         nfe,
         guidance_strength: guidanceStrength,
@@ -599,7 +623,7 @@ const PodcastPage: React.FC = () => {
         // 调用单段生成API
         const segmentResponse = await writingApi.generatePodcastTTS({
           text: audioSegments[i].text,
-          ref_audio: refAudioFile,
+          ref_audio_id: savedRefAudioId,  // 使用已保存的音频ID
           prompt_text: promptText,
           nfe,
           guidance_strength: guidanceStrength,
@@ -1303,23 +1327,105 @@ const PodcastPage: React.FC = () => {
                 <Upload
                   accept="audio/*"
                   maxCount={1}
-                  beforeUpload={(file) => {
-                    setRefAudioFile(file);
-                    message.success(`已选择: ${file.name}`);
-                    return false; // 阻止自动上传
+                  beforeUpload={async (file) => {
+                    try {
+                      message.loading('正在上传并保存...', 0);
+                      const response = await writingApi.uploadRefAudio(file);
+                      message.destroy();
+                      
+                      setSavedRefAudioId(response.id);
+                      localStorage.setItem('podcast_ref_audio_id', response.id);
+                      message.success(`✅ 音频已保存: ${response.name}`);
+                      
+                      // 刷新列表
+                      loadRefAudios();
+                      
+                      return false; // 阻止默认上传行为
+                    } catch (error) {
+                      message.destroy();
+                      console.error('上传参考音频失败:', error);
+                      message.error('上传失败');
+                      return false;
+                    }
                   }}
-                  onRemove={() => setRefAudioFile(null)}
+                  onRemove={() => {
+                    setRefAudioFile(null);
+                    setSavedRefAudioId(null);
+                    localStorage.removeItem('podcast_ref_audio_id');
+                  }}
                 >
                   <Button icon={<CloudUploadOutlined />}>
                     选择音频文件
                   </Button>
                 </Upload>
-                {refAudioFile && (
+                {savedRefAudioId && (
                   <Text type="success" style={{ marginTop: 8, display: 'block' }}>
-                    ✓ 已选择: {refAudioFile.name} ({(refAudioFile.size / 1024).toFixed(1)} KB)
+                    ✓ 已选择: {refAudios.find(a => a.id === savedRefAudioId)?.name || '已保存的音频'}
                   </Text>
                 )}
               </div>
+
+              {/* 选择已保存的参考音频 */}
+              {refAudios.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <Text strong>或从历史音频中选择：</Text>
+                  <Select
+                    value={savedRefAudioId || undefined}
+                    onChange={(value) => {
+                      setSavedRefAudioId(value);
+                      localStorage.setItem('podcast_ref_audio_id', value);
+                      message.success('已切换参考音频');
+                    }}
+                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="选择一个已保存的参考音频"
+                    loading={loadingRefAudios}
+                    allowClear
+                    onClear={() => {
+                      setSavedRefAudioId(null);
+                      localStorage.removeItem('podcast_ref_audio_id');
+                    }}
+                  >
+                    {refAudios.map(audio => (
+                      <Select.Option key={audio.id} value={audio.id}>
+                        <Space>
+                          <span>{audio.name}</span>
+                          <Button
+                            size="small"
+                            type="text"
+                            danger
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              Modal.confirm({
+                                title: '确认删除？',
+                                content: `确定要删除音频 "${audio.name}" 吗？`,
+                                okText: '删除',
+                                okType: 'danger',
+                                cancelText: '取消',
+                                onOk: async () => {
+                                  try {
+                                    await writingApi.deleteRefAudio(audio.id);
+                                    message.success('已删除');
+                                    loadRefAudios();
+                                    if (savedRefAudioId === audio.id) {
+                                      setSavedRefAudioId(null);
+                                      localStorage.removeItem('podcast_ref_audio_id');
+                                    }
+                                  } catch (error) {
+                                    console.error('删除失败:', error);
+                                    message.error('删除失败');
+                                  }
+                                }
+                              });
+                            }}
+                          >
+                            删除
+                          </Button>
+                        </Space>
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </div>
+              )}
 
               <Divider style={{ margin: '12px 0' }} />
 
@@ -1458,7 +1564,7 @@ const PodcastPage: React.FC = () => {
                           size="small"
                           type="primary"
                           onClick={() => handleGenerateSegmentAudio(index)}
-                          disabled={!refAudioFile || segment.status === 'generating'}
+                          disabled={!savedRefAudioId || segment.status === 'generating'}
                           loading={segment.status === 'generating'}
                         >
                           {segment.status === 'completed' ? '重新生成' : '生成语音'}
