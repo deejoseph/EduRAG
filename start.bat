@@ -32,8 +32,8 @@ if %errorlevel% neq 0 (
 
 :: ── 2. 预加载模型 ──────────────────────────
 echo [2/4] 读取配置文件...
-:: 使用Python从config.yaml读取模型名称
-for /f "usebackq tokens=*" %%a in (`"%PYTHON_PATH%" -c "import yaml; c=yaml.safe_load(open('config.yaml', encoding='utf-8')); print(c.get('ollama',{}).get('model','gemma3:4b'))"`) do set "MODEL_NAME=%%a"
+:: 使用Python从 config.yaml读取模型名称
+for /f "usebackq tokens=*" %%a in (`%PYTHON_PATH% -c "import yaml; c=yaml.safe_load(open('config.yaml', encoding='utf-8')); print(c.get('ollama',{}).get('model','gemma3:4b'))"`) do set "MODEL_NAME=%%a"
 if "%MODEL_NAME%"=="" set "MODEL_NAME=gemma3:4b"
 
 echo       预加载 LLM 模型 (%MODEL_NAME%)...

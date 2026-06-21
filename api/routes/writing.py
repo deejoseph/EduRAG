@@ -1123,9 +1123,9 @@ def generate_podcast_script():
 
 {full_context}
 
-{f'以下是相关知识库内容（供参考）：\n\n{rag_context}' if rag_context else ''}
+{"以下是相关知识库内容（供参考）：\n\n" + rag_context if rag_context else ''}
 
-{f'以下是历史播客文案（请学习其风格和语气）：\n\n{podcast_style_context}' if podcast_style_context else ''}
+{"以下是历史播客文案（请学习其风格和语气）：\n\n" + podcast_style_context if podcast_style_context else ''}
 
 请基于以上素材生成播客文案："""
         
