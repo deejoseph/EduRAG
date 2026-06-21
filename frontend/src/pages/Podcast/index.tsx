@@ -322,8 +322,8 @@ const PodcastPage: React.FC = () => {
     setTtsGenerating(true);
     
     try {
-      // 生成完整合并音频（传入所有段落的完整文本）
-      console.log('开始生成完整合并音频...');
+      // 第一步：先生成完整合并音频（用于下载）
+      console.log('[批量生成] 开始生成完整合并音频...');
       const fullText = audioSegments.map(seg => seg.text).join('');
       
       const fullResponse = await writingApi.generatePodcastTTS({
@@ -334,25 +334,53 @@ const PodcastPage: React.FC = () => {
         guidance_strength: guidanceStrength,
       });
       
-      // 保存完整音频URL
+      // 保存完整音频URL（用于下载）
       setFullAudioUrl(fullResponse.audio_url);
-      console.log('完整合并音频生成完成:', fullResponse.audio_url);
+      console.log('[批量生成] 完整合并音频生成完成:', fullResponse.audio_url);
+      console.log('[批量生成] 完整音频时长:', fullResponse.duration_sec, '秒');
       
-      // 更新所有段落的状态为completed
-      setAudioSegments(prevSegments => {
-        return prevSegments.map((seg, index) => ({
-          ...seg,
-          status: 'completed' as const,
-          audio_url: fullResponse.audio_url, // 所有段落都使用完整音频URL
-          duration: fullResponse.duration_sec / prevSegments.length // 平均分配时长
-        }));
-      });
+      // 第二步：逐段生成独立音频（用于试听），同时显示进度
+      console.log('[批量生成] 开始逐段生成独立音频...');
+      for (let i = 0; i < audioSegments.length; i++) {
+        console.log(`[批量生成] 准备生成第 ${i + 1}/${audioSegments.length} 段...`);
+        
+        // 设置当前段为generating状态
+        setAudioSegments(prevSegments => {
+          const updated = [...prevSegments];
+          updated[i] = { ...prevSegments[i], status: 'generating' as const };
+          return updated;
+        });
+        
+        // 调用单段生成API
+        const segmentResponse = await writingApi.generatePodcastTTS({
+          text: audioSegments[i].text,
+          ref_audio: refAudioFile,
+          prompt_text: promptText,
+          nfe,
+          guidance_strength: guidanceStrength,
+        });
+        
+        // 更新当前段为completed状态
+        setAudioSegments(prevSegments => {
+          const updated = [...prevSegments];
+          updated[i] = {
+            ...prevSegments[i],
+            audio_url: segmentResponse.audio_url,
+            duration: segmentResponse.duration_sec,
+            status: 'completed' as const
+          };
+          return updated;
+        });
+        
+        console.log(`[批量生成] 第 ${i + 1} 段生成完成:`, segmentResponse.audio_url);
+        message.success(`第 ${i + 1}/${audioSegments.length} 段语音生成成功！`);
+      }
       
-      message.success(`完整音频生成成功！时长: ${fullResponse.duration_sec.toFixed(1)}秒`);
-      message.info('提示：如需试听单段，可点击对应段落的"生成语音"按钮');
+      console.log('[批量生成] 所有段落生成完成！');
+      message.success('所有段落语音生成完成！');
       
     } catch (error) {
-      console.error('批量生成失败:', error);
+      console.error('[批量生成] 失败:', error);
       message.error('批量生成失败');
     } finally {
       // 确保总是重置 loading 状态
@@ -787,9 +815,33 @@ const PodcastPage: React.FC = () => {
           </div>
         ) : (
           <div>
-            <div style={{ marginBottom: 16 }}>
-              <Badge count="成功" style={{ backgroundColor: '#52c41a' }} />
-              <Text strong style={{ marginLeft: 8 }}>播客文案已生成！</Text>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <Badge count="成功" style={{ backgroundColor: '#52c41a' }} />
+                <Text strong style={{ marginLeft: 8 }}>播客文案已生成！</Text>
+              </div>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => {
+                  Modal.confirm({
+                    title: '确认清空文案？',
+                    content: '清空后需要重新生成，确定要清空吗？',
+                    okText: '确认清空',
+                    cancelText: '取消',
+                    okType: 'danger',
+                    onOk: () => {
+                      setGeneratedScript('');
+                      setSavedAudioSegments([]);
+                      setAudioSegments([]);
+                      setFullAudioUrl(null);
+                      message.success('文案已清空');
+                    }
+                  });
+                }}
+              >
+                清空文案
+              </Button>
             </div>
             <div
               style={{
