@@ -1280,6 +1280,20 @@ def generate_podcast_tts():
             if os.path.exists(saved_path):
                 ref_audio_path = Path(saved_path)
                 logger.info(f"使用已保存的参考音频: {saved_audio_id}")
+                
+                # 自动从JSON元数据文件中读取 prompt_text（如果前端没有提供）
+                if not prompt_text:
+                    audio_id = os.path.splitext(saved_audio_id)[0]
+                    metadata_filepath = os.path.join(ref_audio_dir, f"{audio_id}.json")
+                    if os.path.exists(metadata_filepath):
+                        try:
+                            import json
+                            with open(metadata_filepath, 'r', encoding='utf-8') as f:
+                                metadata = json.load(f)
+                                prompt_text = metadata.get('prompt_text', '')
+                                logger.info(f"从元数据文件读取到 prompt_text: {prompt_text}")
+                        except Exception as e:
+                            logger.warning(f"读取元数据文件失败: {e}")
             else:
                 return error_response(f"参考音频不存在: {saved_audio_id}", 404)
         elif 'ref_audio' in request.files:
