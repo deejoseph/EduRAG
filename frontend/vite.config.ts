@@ -38,6 +38,10 @@ export default defineConfig({
         target: 'http://localhost:5000',
         changeOrigin: true,
       },
+      '/podcast-audio': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
     },
   },
 })
