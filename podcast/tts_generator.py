@@ -16,6 +16,9 @@ from podcast.text_preprocessor import preprocess_text, smart_split_text
 
 logger = logging.getLogger(__name__)
 
+# 获取项目根目录（EduRAG 目录）
+PROJECT_ROOT = Path(__file__).parent.parent
+
 
 class PodcastTTSGenerator:
     """播客TTS生成器"""
@@ -24,7 +27,7 @@ class PodcastTTSGenerator:
         self,
         longcat_dir: str = "C:/LongCat/LongCat-AudioDiT",
         model_dir: str = "meituan-longcat/LongCat-AudioDiT-1B",
-        output_dir: str = "./data/podcast_audio/"
+        output_dir: Optional[str] = None
     ):
         """
         初始化TTS生成器
@@ -32,11 +35,15 @@ class PodcastTTSGenerator:
         Args:
             longcat_dir: LongCat-AudioDiT 项目目录
             model_dir: 模型目录路径
-            output_dir: 输出音频目录
+            output_dir: 输出音频目录（默认为项目根目录下的 data/podcast_audio）
         """
         self.longcat_dir = Path(longcat_dir)
         self.model_dir = model_dir
-        self.output_dir = Path(output_dir)
+        # 使用绝对路径，避免工作目录不一致导致的问题
+        if output_dir is None:
+            self.output_dir = PROJECT_ROOT / "data" / "podcast_audio"
+        else:
+            self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # 验证 LongCat 项目是否存在
