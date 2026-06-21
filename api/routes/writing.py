@@ -687,6 +687,14 @@ def get_podcast_scripts():
             where_filter['status'] = status
         
         # 查询所有符合条件的文案
+        # 检查集合是否存在
+        if not db.collection_exists('podcast_scripts'):
+            logger.info("播客文案集合尚未创建，返回空列表")
+            return success_response({
+                'scripts': [],
+                'count': 0
+            })
+        
         collection = db.get_collection('podcast_scripts')
         results = collection.get(
             where=where_filter,
@@ -755,6 +763,10 @@ def get_podcast_script(script_id: str):
         if not db:
             return error_response("数据库未初始化", 500)
         
+        # 检查集合是否存在
+        if not db.collection_exists('podcast_scripts'):
+            return error_response(f"文案 {script_id} 不存在", 404)
+        
         # 查询指定ID的文案
         collection = db.get_collection('podcast_scripts')
         results = collection.get(
@@ -811,6 +823,10 @@ def delete_podcast_script(script_id: str):
         if not db:
             return error_response("数据库未初始化", 500)
         
+        # 检查集合是否存在
+        if not db.collection_exists('podcast_scripts'):
+            return error_response(f"文案 {script_id} 不存在", 404)
+        
         # 删除指定ID的文案
         collection = db.get_collection('podcast_scripts')
         results = collection.get(
@@ -854,6 +870,10 @@ def duplicate_podcast_script(script_id: str):
         
         if not db:
             return error_response("数据库未初始化", 500)
+        
+        # 检查集合是否存在
+        if not db.collection_exists('podcast_scripts'):
+            return error_response(f"文案 {script_id} 不存在", 404)
         
         # 获取原文案
         collection = db.get_collection('podcast_scripts')
@@ -1154,6 +1174,11 @@ def generate_podcast_script():
                 import uuid
                 script_id = str(uuid.uuid4())
                 timestamp = int(time.time() * 1000)
+                
+                # 确保集合存在（如果不存在则创建）
+                if not db.collection_exists('podcast_scripts'):
+                    logger.info("创建播客文案集合: podcast_scripts")
+                    db.create_collection('podcast_scripts', metadata={'description': '播客文案知识库'})
                 
                 # 保存到播客知识库集合
                 db.add_documents(
