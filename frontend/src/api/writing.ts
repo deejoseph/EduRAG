@@ -99,7 +99,7 @@ export const writingApi = {
   generatePodcastScript: (params: GeneratePodcastRequest) =>
     apiClient.post<any, { success: boolean; script: string; ai_model: string; materials_count: number }>('/writing/podcast-generate', params),
 
-  // TTS语音生成接口
+  // TTS语音生成接口（使用fetch避免axios问题）
   generatePodcastTTS: (params: GeneratePodcastTTSRequest) => {
     const formData = new FormData();
     formData.append('text', params.text);
@@ -111,16 +111,25 @@ export const writingApi = {
     console.log('[TTS API] 开始调用，文本长度:', params.text.length);
     const startTime = Date.now();
     
-    return apiClient.post<any, GeneratePodcastTTSResponse>('/writing/podcast-tts', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      timeout: 300000, // TTS生成较慢，设置5分钟超时
-    }).then(response => {
+    // 使用原生fetch替代axios，避免multipart/form-data的问题
+    return fetch('/writing/podcast-tts', {
+      method: 'POST',
+      body: formData,
+      // 不要设置Content-Type，让浏览器自动设置boundary
+    })
+    .then(async response => {
       const elapsed = Date.now() - startTime;
-      console.log('[TTS API] 请求完成，耗时:', elapsed, 'ms');
-      return response;
-    }).catch(error => {
+      console.log('[TTS API] HTTP响应收到，耗时:', elapsed, 'ms, 状态码:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[TTS API] JSON解析完成:', data);
+      return data as GeneratePodcastTTSResponse;
+    })
+    .catch(error => {
       const elapsed = Date.now() - startTime;
       console.error('[TTS API] 请求失败，耗时:', elapsed, 'ms', error);
       throw error;
