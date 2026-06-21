@@ -639,6 +639,276 @@ def export_to_podcast():
         return error_response(f"服务端错误: {e}", 500)
 
 
+@writing_bp.route('/podcast-scripts', methods=['GET'])
+def get_podcast_scripts():
+    """
+    获取播客文案列表
+    
+    查询参数：
+    - topic: 主题过滤（可选）
+    - status: 状态过滤（draft/completed/archived）
+    - limit: 返回数量限制（默认50）
+    
+    响应体：
+    {
+        "success": true,
+        "scripts": [
+            {
+                "script_id": "uuid",
+                "title": "标题",
+                "topic": "主题",
+                "version": 1,
+                "status": "draft",
+                "created_at": "2024-01-01 12:00:00",
+                "materials_count": 3
+            }
+        ],
+        "count": 10
+    }
+    """
+    try:
+        from flask import current_app
+        app_config = current_app.config.get('edurag', {})
+        db = app_config.get('db')
+        
+        if not db:
+            return error_response("数据库未初始化", 500)
+        
+        # 获取查询参数
+        topic = request.args.get('topic')
+        status = request.args.get('status')
+        limit = int(request.args.get('limit', 50))
+        
+        # 构建where条件
+        where_filter = {'type': 'podcast_script'}
+        if topic:
+            where_filter['topic'] = topic
+        if status:
+            where_filter['status'] = status
+        
+        # 查询所有符合条件的文案
+        collection = db.get_collection('podcast_scripts')
+        results = collection.get(
+            where=where_filter,
+            limit=limit,
+            include=['metadatas']
+        )
+        
+        # 提取元数据并按时间排序
+        scripts = []
+        for metadata in results['metadatas']:
+            scripts.append({
+                'script_id': metadata.get('script_id'),
+                'title': metadata.get('title', '未命名'),
+                'topic': metadata.get('topic', '未知'),
+                'version': metadata.get('version', 1),
+                'parent_id': metadata.get('parent_id'),
+                'status': metadata.get('status', 'draft'),
+                'created_at': metadata.get('created_at'),
+                'updated_at': metadata.get('updated_at'),
+                'materials_count': metadata.get('materials_count', 0),
+                'model': metadata.get('model', 'unknown')
+            })
+        
+        # 按时间戳降序排序（最新的在前）
+        scripts.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        logger.info(f"获取到 {len(scripts)} 个播客文案")
+        
+        return success_response({
+            'scripts': scripts,
+            'count': len(scripts)
+        })
+    
+    except Exception as e:
+        logger.error(f"获取播客文案列表失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/<script_id>', methods=['GET'])
+def get_podcast_script(script_id: str):
+    """
+    获取单个播客文案内容
+    
+    路径参数：
+    - script_id: 文案ID
+    
+    响应体：
+    {
+        "success": true,
+        "script": {
+            "script_id": "uuid",
+            "content": "文案内容",
+            "title": "标题",
+            "topic": "主题",
+            "version": 1,
+            "status": "draft",
+            "created_at": "2024-01-01 12:00:00"
+        }
+    }
+    """
+    try:
+        from flask import current_app
+        app_config = current_app.config.get('edurag', {})
+        db = app_config.get('db')
+        
+        if not db:
+            return error_response("数据库未初始化", 500)
+        
+        # 查询指定ID的文案
+        collection = db.get_collection('podcast_scripts')
+        results = collection.get(
+            where={'script_id': script_id},
+            include=['metadatas', 'documents']
+        )
+        
+        if not results['metadatas']:
+            return error_response(f"文案 {script_id} 不存在", 404)
+        
+        metadata = results['metadatas'][0]
+        content = results['documents'][0] if results['documents'] else ''
+        
+        script_data = {
+            'script_id': metadata.get('script_id'),
+            'content': content,
+            'title': metadata.get('title', '未命名'),
+            'topic': metadata.get('topic', '未知'),
+            'version': metadata.get('version', 1),
+            'parent_id': metadata.get('parent_id'),
+            'status': metadata.get('status', 'draft'),
+            'created_at': metadata.get('created_at'),
+            'updated_at': metadata.get('updated_at'),
+            'materials_count': metadata.get('materials_count', 0),
+            'model': metadata.get('model', 'unknown')
+        }
+        
+        return success_response({'script': script_data})
+    
+    except Exception as e:
+        logger.error(f"获取播客文案失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/<script_id>', methods=['DELETE'])
+def delete_podcast_script(script_id: str):
+    """
+    删除播客文案
+    
+    路径参数：
+    - script_id: 文案ID
+    
+    响应体：
+    {
+        "success": true,
+        "message": "文案已删除"
+    }
+    """
+    try:
+        from flask import current_app
+        app_config = current_app.config.get('edurag', {})
+        db = app_config.get('db')
+        
+        if not db:
+            return error_response("数据库未初始化", 500)
+        
+        # 删除指定ID的文案
+        collection = db.get_collection('podcast_scripts')
+        results = collection.get(
+            where={'script_id': script_id},
+            include=[]
+        )
+        
+        if not results['ids']:
+            return error_response(f"文案 {script_id} 不存在", 404)
+        
+        # 删除
+        collection.delete(ids=results['ids'])
+        logger.info(f"播客文案已删除: {script_id}")
+        
+        return success_response({'message': '文案已删除'})
+    
+    except Exception as e:
+        logger.error(f"删除播客文案失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/<script_id>/duplicate', methods=['POST'])
+def duplicate_podcast_script(script_id: str):
+    """
+    复制播客文案（用于二次创作）
+    
+    路径参数：
+    - script_id: 原文案ID
+    
+    响应体：
+    {
+        "success": true,
+        "new_script_id": "新的文案ID",
+        "version": 2
+    }
+    """
+    try:
+        from flask import current_app
+        app_config = current_app.config.get('edurag', {})
+        db = app_config.get('db')
+        
+        if not db:
+            return error_response("数据库未初始化", 500)
+        
+        # 获取原文案
+        collection = db.get_collection('podcast_scripts')
+        results = collection.get(
+            where={'script_id': script_id},
+            include=['metadatas', 'documents']
+        )
+        
+        if not results['metadatas']:
+            return error_response(f"文案 {script_id} 不存在", 404)
+        
+        original_metadata = results['metadatas'][0]
+        original_content = results['documents'][0] if results['documents'] else ''
+        
+        # 生成新ID
+        import time
+        import uuid
+        new_script_id = str(uuid.uuid4())
+        timestamp = int(time.time() * 1000)
+        
+        # 创建副本，版本号+1
+        new_version = original_metadata.get('version', 1) + 1
+        new_metadata = dict(original_metadata)
+        new_metadata.update({
+            'script_id': new_script_id,
+            'version': new_version,
+            'parent_id': script_id,  # 记录父级
+            'title': f"{original_metadata.get('title', '未命名')} (副本v{new_version})",
+            'status': 'draft',
+            'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'timestamp': timestamp
+        })
+        
+        # 保存副本
+        db.add_documents(
+            collection_name='podcast_scripts',
+            documents=[original_content],
+            metadatas=[new_metadata],
+            ids=[f'script_{new_script_id}']
+        )
+        
+        logger.info(f"播客文案已复制: {script_id} -> {new_script_id} (v{new_version})")
+        
+        return success_response({
+            'new_script_id': new_script_id,
+            'version': new_version,
+            'title': new_metadata['title']
+        })
+    
+    except Exception as e:
+        logger.error(f"复制播客文案失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
 # ─────────────────────────────────────────────────────────
 # GET /writing/podcast-materials  获取播客素材列表
 # ─────────────────────────────────────────────────────────
@@ -873,24 +1143,45 @@ def generate_podcast_script():
                 topics = [mat['topic'] for mat in materials if mat.get('topic')]
                 main_topic = topics[0] if topics else '未命名'
                 
-                # 保存到播客知识库集合
+                # 生成唯一ID和时间戳
                 import time
-                doc_id = f"podcast_{int(time.time()*1000)}"
+                import uuid
+                script_id = str(uuid.uuid4())
+                timestamp = int(time.time() * 1000)
+                
+                # 保存到播客知识库集合
                 db.add_documents(
                     collection_name='podcast_scripts',
                     documents=[script_content],
                     metadatas=[{
+                        'script_id': script_id,
+                        'version': 1,
+                        'parent_id': None,  # 根文案，没有父级
+                        'title': f'{main_topic} - 播客文案 {time.strftime("%m-%d %H:%M")}',
                         'topic': main_topic,
                         'model': model,
                         'materials_count': len(materials),
+                        'materials_ids': material_ids,
                         'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
-                        'type': 'podcast_script'
+                        'updated_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                        'status': 'draft',  # draft/completed/archived
+                        'type': 'podcast_script',
+                        'timestamp': timestamp  # 用于排序
                     }],
-                    ids=[doc_id]
+                    ids=[f'script_{script_id}']
                 )
-                logger.info(f"播客文案已保存到知识库: {doc_id}")
+                logger.info(f"播客文案已保存到知识库: {script_id}")
+                
+                # 返回 script_id 给前端
+                script_metadata = {
+                    'script_id': script_id,
+                    'version': 1,
+                    'title': f'{main_topic} - 播客文案 {time.strftime("%m-%d %H:%M")}',
+                    'created_at': time.strftime('%Y-%m-%d %H:%M:%S')
+                }
         except Exception as e:
             logger.warning(f"保存播客文案到知识库失败: {e}")
+            script_metadata = None
         
         # 更新素材状态为已导入
         for material_id in material_ids:
@@ -899,7 +1190,8 @@ def generate_podcast_script():
         return success_response({
             'script': script_content,
             'ai_model': model,
-            'materials_count': len(materials)
+            'materials_count': len(materials),
+            'script_metadata': script_metadata  # 返回文案元数据
         })
     
     except Exception as e:
