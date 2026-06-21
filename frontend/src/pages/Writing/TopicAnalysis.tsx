@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, message, Card, Badge, Space, Typography, Tag } from 'antd';
-import { BulbOutlined, BookOutlined } from '@ant-design/icons';
+import { Form, Input, Select, Button, message, Card, Badge, Space, Typography, Tag, Radio } from 'antd';
+import { BulbOutlined, BookOutlined, SoundOutlined, StarOutlined } from '@ant-design/icons';
 import { useWritingStore } from '../../store/writingStore';
 import { writingApi } from '../../api/writing';
 import { getFavorites } from '../../api/hotTopics';
@@ -8,6 +8,7 @@ import { TOPIC_TYPES, GRADE_LEVELS } from '../../constants';
 import AnswerDisplay from '../../components/writing/AnswerDisplay';
 import ReferencePanel from '../../components/writing/ReferencePanel';
 import LoadingOverlay from '../../components/common/LoadingOverlay';
+import MultiAiResults from '../../components/writing/MultiAiResults';
 
 const { Text } = Typography;
 
@@ -20,6 +21,11 @@ const TopicAnalysis: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
   const [favorites, setFavorites] = useState<any[]>([]);
+  
+  // 多AI生成相关状态
+  const [multiAiMode, setMultiAiMode] = useState(false); // 是否启用多AI模式
+  const [multiAiResults, setMultiAiResults] = useState<any[]>([]);
+  const [multiAiLoading, setMultiAiLoading] = useState(false);
   
   // 加载题库列表
   useEffect(() => {
@@ -44,6 +50,7 @@ const TopicAnalysis: React.FC = () => {
     message.success(`已选择题目：${topicData.title}`);
   };
 
+  // 普通审题分析
   const handleSubmit = async () => {
     if (!topic.trim()) {
       message.warning('请输入作文题目');
@@ -63,6 +70,36 @@ const TopicAnalysis: React.FC = () => {
       // error handled by interceptor
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 多AI并行生成播客素材
+  const handleMultiAiGenerate = async () => {
+    if (!topic.trim()) {
+      message.warning('请输入作文题目');
+      return;
+    }
+    
+    setMultiAiLoading(true);
+    try {
+      const res = await writingApi.multiAiAnalyze({
+        topic: topic.trim(),
+        grade_level: gradeLevel,
+        topic_type: topicType,
+        models: ['qwen3:8b', 'gemma3:4b'], // 使用2个差异化模型
+      });
+      
+      if (res.success && res.results) {
+        setMultiAiResults(res.results);
+        message.success(`✅ 多AI生成完成！共 ${res.count} 个结果`);
+      } else {
+        message.error('生成失败，请重试');
+      }
+    } catch (error) {
+      console.error('多AI生成失败:', error);
+      message.error('生成失败，请检查网络连接');
+    } finally {
+      setMultiAiLoading(false);
     }
   };
 
@@ -117,6 +154,24 @@ const TopicAnalysis: React.FC = () => {
       </Card>
       
       <Form layout="vertical">
+        {/* 模式切换 */}
+        <Card size="small" style={{ marginBottom: 16, background: '#f0f5ff', border: '1px solid #adc6ff' }}>
+          <Space>
+            <StarOutlined style={{ color: '#1890ff' }} />
+            <Text strong>生成模式：</Text>
+            <Radio.Group
+              value={multiAiMode}
+              onChange={(e) => setMultiAiMode(e.target.value)}
+              buttonStyle="solid"
+            >
+              <Radio.Button value={false}>普通模式</Radio.Button>
+              <Radio.Button value={true}>
+                <SoundOutlined /> 播客素材模式（多AI）
+              </Radio.Button>
+            </Radio.Group>
+          </Space>
+        </Card>
+
         <Form.Item label="作文题目" required>
           <Input.TextArea
             value={topic}
@@ -143,19 +198,51 @@ const TopicAnalysis: React.FC = () => {
           />
         </Form.Item>
 
-        <Button
-          type="primary"
-          icon={<BulbOutlined />}
-          onClick={handleSubmit}
-          size="large"
-          block
-        >
-          开始审题分析
-        </Button>
+        {multiAiMode ? (
+          <Button
+            type="primary"
+            icon={<SoundOutlined />}
+            onClick={handleMultiAiGenerate}
+            size="large"
+            block
+            loading={multiAiLoading}
+            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          >
+            一键生成播客素材（多AI并行）
+          </Button>
+        ) : (
+          <Button
+            type="primary"
+            icon={<BulbOutlined />}
+            onClick={handleSubmit}
+            size="large"
+            block
+          >
+            开始审题分析
+          </Button>
+        )}
       </Form>
 
-      <AnswerDisplay content={analysisResult} title="审题分析结果" />
-      <ReferencePanel references={analysisRefs} />
+      {/* 多AI结果展示 */}
+      {multiAiMode && multiAiResults.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <MultiAiResults
+            results={multiAiResults}
+            stage="analysis"
+            topic={topic}
+            loading={multiAiLoading}
+            onRegenerate={handleMultiAiGenerate}
+          />
+        </div>
+      )}
+
+      {/* 普通模式结果展示 */}
+      {!multiAiMode && (
+        <>
+          <AnswerDisplay content={analysisResult} title="审题分析结果" />
+          <ReferencePanel references={analysisRefs} />
+        </>
+      )}
     </LoadingOverlay>
   );
 };

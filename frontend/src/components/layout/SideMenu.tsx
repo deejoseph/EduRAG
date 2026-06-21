@@ -10,6 +10,7 @@ import {
   CloudUploadOutlined,
   BookOutlined,
   FireOutlined,
+  SoundOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -29,6 +30,7 @@ const menuItems = [
   { key: '/growth-log', icon: <LineChartOutlined />, label: '成长日志' },
   { key: '/portfolio', icon: <BookOutlined />, label: '作品集' },
   { key: '/hot-topics', icon: <FireOutlined style={{ color: '#ff4d4f' }} />, label: '命题热点' },
+  { key: '/podcast', icon: <SoundOutlined style={{ color: '#722ed1' }} />, label: '播客模块' },
   { key: '/search', icon: <SearchOutlined />, label: '知识检索' },
   { key: '/upload', icon: <CloudUploadOutlined />, label: '添加知识' },
   { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },

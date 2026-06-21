@@ -7,6 +7,7 @@ import {
 import {
   SearchOutlined, FilterOutlined, BulbOutlined,
   FileTextOutlined, FireOutlined, StarFilled, StarOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import { searchApi } from '../../api/search';
 import { favoriteTopic, getFavorites } from '../../api/hotTopics';
@@ -129,6 +130,42 @@ const Search: React.FC = () => {
       const searchEvent = new CustomEvent('trigger-search', { detail: keyword });
       window.dispatchEvent(searchEvent);
     }, 100);
+  };
+
+  // 尝试在新窗口打开文档
+  const handleOpenDocument = (metadata: Record<string, any>) => {
+    // 优先尝试 URL 字段（如果后端直接返回完整URL）
+    const url = metadata.url || metadata.document_url || metadata.file_url;
+    if (url) {
+      window.open(url, '_blank');
+      return;
+    }
+
+    // 尝试本地文件路径
+    const filePath = metadata.source_file || metadata.file_path;
+    if (filePath) {
+      // 获取文件名
+      const fileName = filePath.split(/[\\/]/).pop() || filePath;
+      const ext = fileName.toLowerCase().split('.').pop();
+      
+      // 根据文件扩展名确定子目录
+      let subDir = 'pdfs'; // 默认目录
+      if (ext === 'docx' || ext === 'doc') {
+        subDir = 'docs';
+      } else if (ext === 'txt') {
+        subDir = 'texts';
+      } else if (ext === 'md') {
+        subDir = 'markdowns';
+      }
+      
+      // 构建 API URL
+      const apiPath = `/search/files/${subDir}/${encodeURIComponent(fileName)}`;
+      
+      window.open(apiPath, '_blank');
+      return;
+    }
+
+    message.warning('未找到可打开的文档链接');
   };
 
   // 检测匹配的热门主题
@@ -488,7 +525,16 @@ const Search: React.FC = () => {
             <Text type="secondary" style={{ display: 'block', marginTop: 16, marginBottom: 8 }}>
               共找到 {results.length} 条相关内容
             </Text>
-            {results.map((item, idx) => (
+            {results.map((item, idx) => {
+              // 从 metadata 中提取文件路径
+              const sourceFile = item.metadata.source_file || '';
+              // 检查是否为支持的文档类型
+              const supportedTypes = ['.pdf', '.docx', '.txt', '.md'];
+              const hasDocument = supportedTypes.some(ext => 
+                sourceFile.toLowerCase().endsWith(ext)
+              );
+              
+              return (
               <Card
                 key={idx}
                 className="result-card"
@@ -499,6 +545,20 @@ const Search: React.FC = () => {
                       相似度 {(item.score * 100).toFixed(1)}%
                     </Tag>
                     <Text type="secondary">#{idx + 1}</Text>
+                    {hasDocument && (
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={<LinkOutlined />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDocument(item.metadata);
+                        }}
+                        style={{ padding: 0 }}
+                      >
+                        打开原文
+                      </Button>
+                    )}
                   </Space>
                 }
               >
@@ -509,7 +569,8 @@ const Search: React.FC = () => {
                   {renderMetaTags(item.metadata)}
                 </div>
               </Card>
-            ))}
+              );
+            })}
           </>
         )}
       </LoadingOverlay>

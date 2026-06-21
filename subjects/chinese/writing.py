@@ -1,6 +1,7 @@
 """
 EduRAG 语文写作训练模块
 提供审题、构思、写作辅助、评估四步流程
+支持多AI并行生成和播客素材导出
 """
 
 import sys
@@ -10,6 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 import logging
 from typing import Dict, Any, Optional, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.rag_pipeline import RAGPipeline
 from core.db_manager import EduRAGDatabase
@@ -20,6 +22,7 @@ from subjects.chinese.prompt_loader import (
     render_writing_assist,
     render_evaluation,
 )
+from podcast.material_manager import get_podcast_manager
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +200,318 @@ class ChineseWritingTrainer:
             "retrieved_standards": result["retrieved_docs"],
             "success": True
         }
+    
+    # ========== 播客素材生成功能 ==========
+    
+    def _generate_with_model(
+        self,
+        model_name: str,
+        query_func,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        使用指定模型生成内容（用于多AI并行）
+        
+        Args:
+            model_name: 模型名称
+            query_func: 查询函数
+            **kwargs: 传递给函数的参数
+            
+        Returns:
+            包含结果和模型信息的字典
+        """
+        try:
+            # 创建独立的LLM客户端实例
+            llm = OllamaClient(model=model_name)
+            rag = RAGPipeline(
+                db=self.db,
+                llm=llm,
+                default_collection=self.collection_name,
+                default_top_k=kwargs.get('top_k', 8),
+                default_score_threshold=kwargs.get('score_threshold', 0.25)
+            )
+            
+            # 执行查询
+            result = query_func(rag, **kwargs)
+            
+            return {
+                "ai_model": model_name,
+                "content": result.get("answer", ""),
+                "success": True,
+                "error": None
+            }
+        except Exception as e:
+            logger.error(f"模型 {model_name} 生成失败: {e}")
+            return {
+                "ai_model": model_name,
+                "content": "",
+                "success": False,
+                "error": str(e)
+            }
+    
+    def generate_multi_ai_analysis(
+        self,
+        topic: str,
+        models: List[str] = None,
+        grade: str = "初中",
+        genre: Optional[str] = None,
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        多AI并行生成审题分析
+        
+        Args:
+            topic: 作文题目
+            models: AI模型列表，默认使用配置的多个模型
+            grade: 学段
+            genre: 文体
+            **kwargs: 其他参数
+            
+        Returns:
+            多个AI的生成结果列表
+        """
+        if models is None:
+            # 默认使用2个差异化模型（避免同质化）
+            models = ["qwen3:8b", "gemma3:4b"]
+        
+        def query_func(rag, **kw):
+            rendered = render_topic_analysis(
+                topic=kw['topic'],
+                topic_type=kw.get('genre', ''),
+                grade_level=kw.get('grade', '初中'),
+            )
+            result = rag.query(
+                question=rendered['user_query'],
+                system_prompt=rendered['system_prompt'],
+                temperature=0.5
+            )
+            return {"answer": result["answer"]}
+        
+        results = []
+        with ThreadPoolExecutor(max_workers=len(models)) as executor:
+            futures = {
+                executor.submit(
+                    self._generate_with_model,
+                    model,
+                    query_func,
+                    topic=topic,
+                    grade=grade,
+                    genre=genre,
+                    **kwargs
+                ): model
+                for model in models
+            }
+            
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+        
+        return results
+    
+    def generate_multi_ai_outline(
+        self,
+        topic: str,
+        models: List[str] = None,
+        student_idea: Optional[str] = None,
+        grade: str = "初中",
+        genre: str = "记叙文",
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        多AI并行生成构思提纲
+        """
+        if models is None:
+            models = ["qwen3:8b", "gemma3:4b"]
+        
+        def query_func(rag, **kw):
+            rendered = render_outline(
+                topic=kw['topic'],
+                thesis=kw.get('student_idea', ''),
+                style=kw.get('genre', '记叙文'),
+                word_count=800,
+            )
+            result = rag.query(
+                question=rendered['user_query'],
+                system_prompt=rendered['system_prompt'],
+                temperature=0.6
+            )
+            return {"answer": result["answer"]}
+        
+        results = []
+        with ThreadPoolExecutor(max_workers=len(models)) as executor:
+            futures = {
+                executor.submit(
+                    self._generate_with_model,
+                    model,
+                    query_func,
+                    topic=topic,
+                    student_idea=student_idea,
+                    grade=grade,
+                    genre=genre,
+                    **kwargs
+                ): model
+                for model in models
+            }
+            
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+        
+        return results
+    
+    def generate_full_essay(
+        self,
+        topic: str,
+        outline: str,
+        models: List[str] = None,
+        grade: str = "初中",
+        genre: str = "议论文",
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        基于立意和提纲生成完整范文（新增功能）
+        
+        Args:
+            topic: 作文题目
+            outline: 构思提纲
+            models: AI模型列表
+            grade: 学段
+            genre: 文体
+            **kwargs: 其他参数
+            
+        Returns:
+            多个AI生成的范文列表
+        """
+        if models is None:
+            models = ["qwen3:8b", "gemma3:4b"]
+        
+        def query_func(rag, **kw):
+            # 使用写作辅助接口，但提示生成全文
+            prompt = f"""请根据以下题目和提纲，写一篇完整的{kw.get('genre', '议论文')}范文：
+
+题目：{kw['topic']}
+
+提纲：
+{kw['outline']}
+
+要求：
+1. 字数800字左右
+2. 结构完整，逻辑清晰
+3. 语言流畅，有文采
+4. 符合高考作文评分标准
+
+请直接输出范文全文："""
+            
+            result = rag.query(
+                question=prompt,
+                system_prompt="你是一位资深语文教师，擅长指导学生写作高考满分作文。",
+                temperature=0.7
+            )
+            return {"answer": result["answer"]}
+        
+        results = []
+        with ThreadPoolExecutor(max_workers=len(models)) as executor:
+            futures = {
+                executor.submit(
+                    self._generate_with_model,
+                    model,
+                    query_func,
+                    topic=topic,
+                    outline=outline,
+                    grade=grade,
+                    genre=genre,
+                    **kwargs
+                ): model
+                for model in models
+            }
+            
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+        
+        return results
+    
+    def generate_multi_ai_evaluation(
+        self,
+        topic: str,
+        essay: str,
+        models: List[str] = None,
+        grade: str = "初中",
+        genre: str = "记叙文",
+        **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        多AI并行生成作文评估
+        """
+        if models is None:
+            models = ["qwen3:8b", "gemma3:4b"]
+        
+        def query_func(rag, **kw):
+            rendered = render_evaluation(
+                essay=kw['essay'],
+                topic=kw.get('topic', ''),
+                grade_level=kw.get('grade', '初中'),
+                scoring_rubric=['内容立意', '结构安排', '语言表达', '发展等级'],
+            )
+            result = rag.query(
+                question=rendered['user_query'],
+                system_prompt=rendered['system_prompt'],
+                temperature=0.4
+            )
+            return {"answer": result["answer"]}
+        
+        results = []
+        with ThreadPoolExecutor(max_workers=len(models)) as executor:
+            futures = {
+                executor.submit(
+                    self._generate_with_model,
+                    model,
+                    query_func,
+                    topic=topic,
+                    essay=essay,
+                    grade=grade,
+                    genre=genre,
+                    **kwargs
+                ): model
+                for model in models
+            }
+            
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result)
+        
+        return results
+    
+    def export_to_podcast(
+        self,
+        stage: str,
+        topic: str,
+        content: str,
+        ai_model: str = "default",
+        metadata: Optional[Dict] = None
+    ) -> str:
+        """
+        导出单个阶段的素材到播客模块
+        
+        Args:
+            stage: 阶段名称 (analysis/outline/essay/evaluation)
+            topic: 作文题目
+            content: AI生成的内容
+            ai_model: 使用的AI模型
+            metadata: 额外元数据
+            
+        Returns:
+            material_id: 素材ID
+        """
+        manager = get_podcast_manager()
+        material_id = manager.add_stage_material(
+            stage=stage,
+            topic=topic,
+            content=content,
+            ai_model=ai_model,
+            metadata=metadata
+        )
+        return material_id
 
 
 # 简单测试

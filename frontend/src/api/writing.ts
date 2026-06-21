@@ -4,6 +4,62 @@ import type {
   WritingResponse,
 } from '../types/api';
 
+// 播客素材相关类型
+export interface MultiAiRequest {
+  topic: string;
+  models?: string[];
+  grade_level?: string;
+  topic_type?: string;
+  thesis?: string;
+  style?: string;
+  essay?: string;
+}
+
+export interface MultiAiResult {
+  ai_model: string;
+  content: string;
+  success: boolean;
+  error?: string | null;
+}
+
+export interface ExportToPodcastRequest {
+  stage: 'analysis' | 'outline' | 'essay' | 'evaluation';
+  topic: string;
+  content: string;
+  ai_model: string;
+  metadata?: Record<string, any>;
+}
+
+export interface PodcastMaterial {
+  id: string;
+  stage: string;
+  topic: string;
+  content: string;
+  ai_model: string;
+  status: string;
+  created_at: string;
+}
+
+export interface GeneratePodcastRequest {
+  material_ids: string[];
+  prompt?: string;
+  model?: string;
+}
+
+export interface GeneratePodcastTTSRequest {
+  text: string;
+  ref_audio: File;
+  prompt_text: string;
+  nfe?: number;
+  guidance_strength?: number;
+}
+
+export interface GeneratePodcastTTSResponse {
+  audio_url: string;
+  duration_sec: number;
+  message: string;
+}
+
 export const writingApi = {
   analyze: (params: AnalyzeRequest) =>
     apiClient.post<any, WritingResponse>('/writing/analyze', params),
@@ -16,4 +72,46 @@ export const writingApi = {
 
   evaluate: (params: EvaluateRequest) =>
     apiClient.post<any, WritingResponse>('/writing/evaluate', params),
+
+  // 多AI并行生成接口
+  multiAiAnalyze: (params: MultiAiRequest) =>
+    apiClient.post<any, { success: boolean; results: MultiAiResult[]; count: number }>('/writing/multi-ai/analyze', params),
+
+  multiAiOutline: (params: MultiAiRequest) =>
+    apiClient.post<any, { success: boolean; results: MultiAiResult[]; count: number }>('/writing/multi-ai/outline', params),
+
+  generateEssay: (params: { topic: string; outline: string; genre?: string; models?: string[] }) =>
+    apiClient.post<any, { success: boolean; results: MultiAiResult[]; count: number }>('/writing/generate-essay', params),
+
+  multiAiEvaluate: (params: MultiAiRequest) =>
+    apiClient.post<any, { success: boolean; results: MultiAiResult[]; count: number }>('/writing/multi-ai/evaluate', params),
+
+  // 播客素材导出接口
+  exportToPodcast: (params: ExportToPodcastRequest) =>
+    apiClient.post<any, { success: boolean; material_id: string; message: string }>('/writing/export-to-podcast', params),
+
+  getPodcastMaterials: (params?: { topic?: string; stage?: string; status?: string }) =>
+    apiClient.get<any, { success: boolean; materials: PodcastMaterial[]; count: number }>('/writing/podcast-materials', { params }),
+
+  deletePodcastMaterial: (materialId: string) =>
+    apiClient.delete<any, { success: boolean; message: string }>(`/writing/podcast-materials/${materialId}`),
+
+  generatePodcastScript: (params: GeneratePodcastRequest) =>
+    apiClient.post<any, { success: boolean; script: string; ai_model: string; materials_count: number }>('/writing/podcast-generate', params),
+
+  // TTS语音生成接口
+  generatePodcastTTS: (params: GeneratePodcastTTSRequest) => {
+    const formData = new FormData();
+    formData.append('text', params.text);
+    formData.append('ref_audio', params.ref_audio);
+    formData.append('prompt_text', params.prompt_text);
+    if (params.nfe !== undefined) formData.append('nfe', String(params.nfe));
+    if (params.guidance_strength !== undefined) formData.append('guidance_strength', String(params.guidance_strength));
+    
+    return apiClient.post<any, GeneratePodcastTTSResponse>('/writing/podcast-tts', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
 };

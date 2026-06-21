@@ -20,6 +20,7 @@ from core.llm_client import OllamaClient
 from core.retriever import Retriever
 from core.rag_pipeline import RAGPipeline
 from core.reranker import CrossEncoderReranker
+from subjects.chinese.writing import ChineseWritingTrainer
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,9 @@ def create_app(config: dict = None) -> Flask:
         default_score_threshold=retrieval_cfg.get('similarity_threshold', 0.25),
     )
 
+    # 初始化语文写作训练器（用于多AI并行生成和播客素材导出）
+    chinese_trainer = ChineseWritingTrainer(db=db, llm=llm, collection_name='chinese_essays')
+
     # 将共享实例存储到 app 上下文
     app.config['edurag'] = {
         'embedder': embedder,
@@ -118,6 +122,7 @@ def create_app(config: dict = None) -> Flask:
         'llm': llm,
         'retriever': retriever,
         'rag': rag,
+        'chinese_trainer': chinese_trainer,  # 新增：写作训练器实例
         'config': config,
     }
 
@@ -135,6 +140,14 @@ def create_app(config: dict = None) -> Flask:
     app.register_blueprint(upload_bp, url_prefix='/upload')
     app.register_blueprint(portfolio_bp, url_prefix='/portfolio')
     app.register_blueprint(hot_topics_bp, url_prefix='/hot-topics')
+
+    # 播客音频文件服务（静态文件）
+    from flask import send_from_directory
+    @app.route('/podcast-audio/<filename>', methods=['GET'])
+    def serve_podcast_audio(filename):
+        """提供播客音频文件访问"""
+        audio_dir = Path('./data/podcast_audio/')
+        return send_from_directory(str(audio_dir), filename)
 
     # 健康检查
     @app.route('/health', methods=['GET'])

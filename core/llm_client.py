@@ -21,7 +21,7 @@ class OllamaClient:
         model: str = "qwen2.5:7b",
         temperature: float = 0.7,
         num_predict: int = 1024,
-        timeout: int = 45,  # 降低默认超时到45秒，避免长时间等待
+        timeout: int = 120,  # 增加到120秒，支持gemma3等模型的长文本生成
         max_retries: int = 1,  # 减少重试次数到1次，快速失败
         retry_delay: float = 0.3  # 减少重试间隔
     ):

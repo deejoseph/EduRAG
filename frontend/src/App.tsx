@@ -11,6 +11,7 @@ import Settings from './pages/Settings';
 import UploadPage from './pages/Upload';
 import PortfolioPage from './pages/Portfolio';
 import HotTopicsPage from './pages/HotTopics';
+import PodcastPage from './pages/Podcast';
 
 const App: React.FC = () => {
   return (
@@ -25,6 +26,7 @@ const App: React.FC = () => {
         <Route path="/upload" element={<UploadPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/hot-topics" element={<HotTopicsPage />} />
+        <Route path="/podcast" element={<PodcastPage />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
     </AppLayout>
