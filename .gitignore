@@ -40,8 +40,13 @@ data/practice_records/
 data/portfolio/
 data/import_progress.json
 data/hot_topics_cache.json
+data/hot_topics_cache/
+data/hot_topics_favorites.json
 data/debug_last_json.json
 data/docs/
+data/podcast_audio/
+data/podcast_materials/
+data/播客资料/
 test_db/
 
 # Node
@@ -62,3 +67,8 @@ config.local.yaml
 *.tmp
 *.temp
 .cache/
+
+# Runtime data
+api/data/
+uploads/
+nul

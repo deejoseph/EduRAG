@@ -184,20 +184,25 @@ export const writingApi = {
     if (params.nfe !== undefined) formData.append('nfe', String(params.nfe));
     if (params.guidance_strength !== undefined) formData.append('guidance_strength', String(params.guidance_strength));
     
+    const ttsUrl = '/writing/podcast-tts';
+    console.log('[TTS API] 请求URL:', ttsUrl);
+    console.log('[TTS API] 当前页面URL:', window.location.href);
     console.log('[TTS API] 开始调用，文本长度:', params.text.length);
     const startTime = Date.now();
     
     // 使用原生fetch替代axios，避免multipart/form-data的问题
-    return fetch('/writing/podcast-tts', {
+    return fetch(ttsUrl, {
       method: 'POST',
       body: formData,
       // 不要设置Content-Type，让浏览器自动设置boundary
     })
     .then(async response => {
       const elapsed = Date.now() - startTime;
-      console.log('[TTS API] HTTP响应收到，耗时:', elapsed, 'ms, 状态码:', response.status);
+      console.log('[TTS API] HTTP响应收到，耗时:', elapsed, 'ms, 状态码:', response.status, 'URL:', response.url);
       
       if (!response.ok) {
+        const bodyText = await response.text();
+        console.error('[TTS API] 错误响应体:', bodyText);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
