@@ -409,9 +409,28 @@ const PodcastPage: React.FC = () => {
       return updatedSegments;
     });
     
+    // 显示进度提示消息
+    const progressMessage = message.loading(`第 ${index + 1} 段语音生成中...`, 0);
+    
+    // 模拟进度更新（每10秒更新一次提示）
+    let progressStep = 0;
+    const progressInterval = setInterval(() => {
+      progressStep++;
+      const steps = [
+        '正在分析文本...',
+        '正在合成语音...',
+        '正在优化音质...',
+        '即将完成...'
+      ];
+      const stepIndex = Math.min(progressStep - 1, steps.length - 1);
+      console.log(`[进度] 第 ${index + 1} 段: ${steps[stepIndex]} (${progressStep * 10}秒)`);
+    }, 10000); // 每10秒输出一次日志
+    
     // 设置超时保护（6分钟）
     const timeoutId = setTimeout(() => {
       console.error(`第 ${index + 1} 段语音生成超时！`);
+      clearInterval(progressInterval);
+      progressMessage();
       setAudioSegments(prevSegments => {
         const updatedSegments = [...prevSegments];
         updatedSegments[index] = { ...prevSegments[index], status: 'failed' };
@@ -436,6 +455,8 @@ const PodcastPage: React.FC = () => {
       
       // 清除超时保护
       clearTimeout(timeoutId);
+      clearInterval(progressInterval);
+      progressMessage();
       
       console.log('TTS响应:', response);
       console.log('音频URL:', response.audio_url);
@@ -471,6 +492,8 @@ const PodcastPage: React.FC = () => {
     } catch (error: any) {
       // 清除超时保护
       clearTimeout(timeoutId);
+      clearInterval(progressInterval);
+      progressMessage();
       
       console.error('生成语音失败:', error);
       console.error('错误详情:', error.response || error.message);
