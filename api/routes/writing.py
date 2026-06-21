@@ -900,7 +900,7 @@ def duplicate_podcast_script(script_id: str):
         new_metadata.update({
             'script_id': new_script_id,
             'version': new_version,
-            'parent_id': script_id,  # 记录父级
+            'parent_id': script_id or '',  # ChromaDB 不支持 None，用空字符串代替
             'title': f"{original_metadata.get('title', '未命名')} (副本v{new_version})",
             'status': 'draft',
             'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -1182,18 +1182,19 @@ def generate_podcast_script():
                     db.create_collection('podcast_scripts', metadata={'description': '播客文案知识库'})
                 
                 # 保存到播客知识库集合
+                # 注意：ChromaDB 元数据必须是简单类型（str/int/float/bool），不能是 None 或 list
                 db.add_documents(
                     collection_name='podcast_scripts',
                     documents=[script_content],
                     metadatas=[{
                         'script_id': script_id,
                         'version': 1,
-                        'parent_id': None,  # 根文案，没有父级
+                        'parent_id': '',  # ChromaDB 不支持 None，用空字符串代替
                         'title': f'{main_topic} - 播客文案 {time.strftime("%m-%d %H:%M")}',
                         'topic': main_topic,
                         'model': model,
                         'materials_count': len(materials),
-                        'materials_ids': material_ids,
+                        'materials_ids': ','.join(material_ids) if material_ids else '',  # 列表转为字符串
                         'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
                         'updated_at': time.strftime('%Y-%m-%d %H:%M:%S'),
                         'status': 'draft',  # draft/completed/archived
