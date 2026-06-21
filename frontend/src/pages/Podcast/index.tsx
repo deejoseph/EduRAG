@@ -1342,7 +1342,7 @@ const PodcastPage: React.FC = () => {
                   </Button>
                 </Upload>
                 {refAudioFile && (
-                  <Text type="info" style={{ marginTop: 8, display: 'block' }}>
+                  <Text style={{ marginTop: 8, display: 'block' }}>
                     ✓ 已选择: {refAudioFile.name}
                   </Text>
                 )}
