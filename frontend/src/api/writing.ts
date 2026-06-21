@@ -100,6 +100,7 @@ export interface RefAudio {
   path: string;
   size: number;
   created_at: number;
+  prompt_text?: string;  // 参考音频对应的文本
 }
 
 export interface RefAudiosListResponse {
