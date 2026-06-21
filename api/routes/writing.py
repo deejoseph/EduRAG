@@ -1481,6 +1481,10 @@ def upload_podcast_ref_audio():
 def delete_podcast_ref_audio(filename: str):
     """
     删除指定的参考音频及其元数据
+    
+    参数 filename 可以是：
+    - 完整文件名（带扩展名）：2014b9ba6a9d4535bc3fdb721e066140_1782071410.mp3
+    - ID（不带扩展名）：2014b9ba6a9d4535bc3fdb721e066140_1782071410
     """
     try:
         import os
@@ -1490,11 +1494,25 @@ def delete_podcast_ref_audio(filename: str):
         upload_dir = app_config.get('upload_dir', './uploads')
         ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
         
-        # 删除音频文件
-        audio_filepath = os.path.join(ref_audio_dir, filename)
-        if not os.path.exists(audio_filepath):
-            return error_response(f"音频文件不存在: {filename}", 404)
+        # 如果传入的是ID（不带扩展名），自动添加 .mp3 扩展名
+        if not filename.endswith(('.mp3', '.wav', '.m4a', '.flac')):
+            # 尝试查找对应的音频文件
+            audio_filepath = None
+            for ext in ['.mp3', '.wav', '.m4a', '.flac']:
+                test_path = os.path.join(ref_audio_dir, f"{filename}{ext}")
+                if os.path.exists(test_path):
+                    audio_filepath = test_path
+                    filename = f"{filename}{ext}"
+                    break
+            
+            if not audio_filepath:
+                return error_response(f"音频文件不存在: {filename}", 404)
+        else:
+            audio_filepath = os.path.join(ref_audio_dir, filename)
+            if not os.path.exists(audio_filepath):
+                return error_response(f"音频文件不存在: {filename}", 404)
         
+        # 删除音频文件
         os.remove(audio_filepath)
         
         # 删除元数据文件（如果存在）
