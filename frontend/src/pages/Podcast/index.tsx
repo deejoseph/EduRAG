@@ -322,7 +322,7 @@ const PodcastPage: React.FC = () => {
     setTtsGenerating(true);
     
     try {
-      // 第一步：生成完整合并音频（传入所有段落的完整文本）
+      // 生成完整合并音频（传入所有段落的完整文本）
       console.log('开始生成完整合并音频...');
       const fullText = audioSegments.map(seg => seg.text).join('');
       
@@ -338,26 +338,19 @@ const PodcastPage: React.FC = () => {
       setFullAudioUrl(fullResponse.audio_url);
       console.log('完整合并音频生成完成:', fullResponse.audio_url);
       
-      // 更新所有段落的状态为completed，并使用完整音频URL
+      // 更新所有段落的状态为completed
       setAudioSegments(prevSegments => {
         return prevSegments.map((seg, index) => ({
           ...seg,
           status: 'completed' as const,
-          audio_url: fullResponse.audio_url,
+          audio_url: fullResponse.audio_url, // 所有段落都使用完整音频URL
           duration: fullResponse.duration_sec / prevSegments.length // 平均分配时长
         }));
       });
       
       message.success(`完整音频生成成功！时长: ${fullResponse.duration_sec.toFixed(1)}秒`);
+      message.info('提示：如需试听单段，可点击对应段落的"生成语音"按钮');
       
-      // 第二步：逐段生成独立音频（用于试听）
-      console.log('开始逐段生成独立音频...');
-      for (let i = 0; i < audioSegments.length; i++) {
-        // 重新生成每个段落的独立音频
-        await handleGenerateSegmentAudio(i);
-      }
-      
-      message.success('所有段落语音生成完成！');
     } catch (error) {
       console.error('批量生成失败:', error);
       message.error('批量生成失败');
