@@ -118,6 +118,16 @@ const PodcastPage: React.FC = () => {
       const response = await writingApi.getRefAudios();
       setRefAudios(response.audios || []);
       console.log('[Podcast] 加载参考音频列表:', response.audios?.length || 0, '个');
+      
+      // 如果 localStorage 中有 savedRefAudioId，尝试恢复对应的 prompt_text
+      const savedRefAudioId = localStorage.getItem('podcast_ref_audio_id');
+      if (savedRefAudioId && response.audios) {
+        const selectedAudio = response.audios.find(a => a.id === savedRefAudioId);
+        if (selectedAudio && selectedAudio.prompt_text) {
+          console.log('[Podcast] 从已保存的音频中恢复 prompt_text:', selectedAudio.prompt_text);
+          setPromptText(selectedAudio.prompt_text);
+        }
+      }
     } catch (error) {
       console.error('加载参考音频列表失败:', error);
     } finally {
@@ -1330,7 +1340,7 @@ const PodcastPage: React.FC = () => {
             icon={<CloudUploadOutlined />}
             onClick={handleGenerateAllAudio}
             loading={ttsGenerating}
-            disabled={!refAudioFile || audioSegments.length === 0}
+            disabled={!savedRefAudioId || audioSegments.length === 0}
           >
             {ttsGenerating ? '生成中...' : '批量生成所有段落'}
           </Button>,
