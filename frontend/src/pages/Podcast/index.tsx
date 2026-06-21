@@ -208,6 +208,16 @@ const PodcastPage: React.FC = () => {
     updatedSegments[index] = { ...segment, status: 'generating' };
     setAudioSegments(updatedSegments);
     
+    console.log(`开始生成第 ${index + 1} 段语音...`);
+    
+    // 设置超时保护（6分钟）
+    const timeoutId = setTimeout(() => {
+      console.error(`第 ${index + 1} 段语音生成超时！`);
+      updatedSegments[index] = { ...segment, status: 'failed' };
+      setAudioSegments(updatedSegments);
+      message.error(`第 ${index + 1} 段语音生成超时，请重试`);
+    }, 360000);
+    
     try {
       console.log('开始调用TTS API...');
       // 直接调用API
@@ -218,6 +228,9 @@ const PodcastPage: React.FC = () => {
         nfe,
         guidance_strength: guidanceStrength,
       });
+      
+      // 清除超时保护
+      clearTimeout(timeoutId);
       
       console.log('TTS响应:', response);
       console.log('音频URL:', response.audio_url);
@@ -234,6 +247,9 @@ const PodcastPage: React.FC = () => {
       setAudioSegments(updatedSegments);
       message.success(`第 ${index + 1} 段语音生成成功！`);
     } catch (error: any) {
+      // 清除超时保护
+      clearTimeout(timeoutId);
+      
       console.error('生成语音失败:', error);
       console.error('错误详情:', error.response || error.message);
       updatedSegments[index] = { ...segment, status: 'failed' };
