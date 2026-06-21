@@ -36,6 +36,7 @@ const PodcastPage: React.FC = () => {
   const [nfe, setNfe] = useState(18);
   const [guidanceStrength, setGuidanceStrength] = useState(3.5);
   const [audioSegments, setAudioSegments] = useState<Array<{text: string; audio_url?: string; duration?: number; status: 'pending' | 'generating' | 'completed' | 'failed'}>>([]);
+  const [savedAudioSegments, setSavedAudioSegments] = useState<Array<{text: string; audio_url?: string; duration?: number; status: 'pending' | 'generating' | 'completed' | 'failed'}>>([]); // 保存的分段数据，关闭弹窗后保留
   const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);
   const [audioPlayer, setAudioPlayer] = useState<HTMLAudioElement | null>(null);
 
@@ -143,6 +144,11 @@ const PodcastPage: React.FC = () => {
       setGeneratedScript(response.script);
       message.success(`成功生成播客文案（基于${response.materials_count}个素材）`);
       
+      // 清除旧的TTS分段数据，因为文案已更新
+      setSavedAudioSegments([]);
+      setAudioSegments([]);
+      console.log('生成新文案，清除旧的分段数据');
+      
       // 刷新素材列表（更新状态）
       loadMaterials();
     } catch (error) {
@@ -160,12 +166,19 @@ const PodcastPage: React.FC = () => {
       return;
     }
     
-    // 智能分段文案
-    const segments = splitScriptIntoSegments(generatedScript);
-    setAudioSegments(segments.map(text => ({
-      text,
-      status: 'pending' as const
-    })));
+    // 如果已有保存的分段数据，直接恢复
+    if (savedAudioSegments.length > 0) {
+      console.log('恢复之前保存的分段数据:', savedAudioSegments.length, '段');
+      setAudioSegments(savedAudioSegments);
+    } else {
+      // 否则重新分段
+      const segments = splitScriptIntoSegments(generatedScript);
+      setAudioSegments(segments.map(text => ({
+        text,
+        status: 'pending' as const
+      })));
+    }
+    
     setTtsModalVisible(true);
   };
 
@@ -778,17 +791,23 @@ const PodcastPage: React.FC = () => {
         }
         open={ttsModalVisible}
         onCancel={() => {
+          // 关闭时保存当前的分段数据
+          setSavedAudioSegments(audioSegments);
+          console.log('关闭TTS弹窗，保存分段数据:', audioSegments.length, '段');
           setTtsModalVisible(false);
           setRefAudioFile(null);
-          setAudioSegments([]);
           setCurrentPlayingIndex(null);
+          // 不清空 audioSegments，下次打开时恢复
         }}
         footer={[
           <Button key="close" onClick={() => {
+            // 关闭时保存当前的分段数据
+            setSavedAudioSegments(audioSegments);
+            console.log('点击关闭按钮，保存分段数据:', audioSegments.length, '段');
             setTtsModalVisible(false);
             setRefAudioFile(null);
-            setAudioSegments([]);
             setCurrentPlayingIndex(null);
+            // 不清空 audioSegments，下次打开时恢复
           }}>
             关闭
           </Button>,
