@@ -1159,6 +1159,7 @@ def generate_podcast_script():
         script_content = result.get('response', '')
         
         # 将生成的播客文案保存到播客知识库
+        script_metadata = None
         try:
             from flask import current_app
             app_config = current_app.config.get('edurag', {})
@@ -1201,7 +1202,7 @@ def generate_podcast_script():
                     }],
                     ids=[f'script_{script_id}']
                 )
-                logger.info(f"播客文案已保存到知识库: {script_id}")
+                logger.info(f"✅ 播客文案已保存到知识库: {script_id}")
                 
                 # 返回 script_id 给前端
                 script_metadata = {
@@ -1211,8 +1212,8 @@ def generate_podcast_script():
                     'created_at': time.strftime('%Y-%m-%d %H:%M:%S')
                 }
         except Exception as e:
-            logger.warning(f"保存播客文案到知识库失败: {e}")
-            script_metadata = None
+            logger.error(f"❌ 保存播客文案到知识库失败: {e}", exc_info=True)
+            # 不设置 script_metadata，但不阻断流程
         
         # 更新素材状态为已导入
         for material_id in material_ids:
