@@ -1255,14 +1255,12 @@ def generate_podcast_tts():
     try:
         # 获取表单数据
         text = request.form.get('text')
-        prompt_text = request.form.get('prompt_text')
+        prompt_text = request.form.get('prompt_text', '')  # 允许为空，稍后从JSON读取
         nfe = int(request.form.get('nfe', 18))
         guidance_strength = float(request.form.get('guidance_strength', 3.5))
         
         if not text:
             return error_response("必须提供 text 字段")
-        if not prompt_text:
-            return error_response("必须提供 prompt_text 字段")
         
         # 获取参考音频文件或路径
         ref_audio_path = None
@@ -1311,7 +1309,11 @@ def generate_podcast_tts():
         else:
             return error_response("必须上传 ref_audio 文件或提供 ref_audio_id")
         
-        logger.info(f"收到TTS请求: 文本长度={len(text)}, 参考音频={ref_audio_path}")
+        # 最终验证：如果还是没有 prompt_text，报错
+        if not prompt_text:
+            return error_response("必须提供 prompt_text 字段，或确保已保存的音频包含对应的文本")
+        
+        logger.info(f"收到TTS请求: 文本长度={len(text)}, 参考音频={ref_audio_path}, prompt_text={prompt_text}")
         
         # 调用TTS生成器
         from podcast.tts_generator import get_tts_generator
