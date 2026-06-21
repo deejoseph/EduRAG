@@ -7,38 +7,19 @@ import re
 from typing import List, Dict
 
 
-# 常见英文缩写词典（格式：缩写 -> 正确读音）
-ENGLISH_ABBREVIATIONS = {
-    "AI": "人工智能",
-    "NASA": "美国航空航天局",
-    "CEO": "首席执行官",
-    "CFO": "首席财务官",
-    "CTO": "首席技术官",
-    "API": "应用程序接口",
-    "URL": "统一资源定位符",
-    "HTTP": "超文本传输协议",
-    "HTML": "超文本标记语言",
-    "CSS": "层叠样式表",
+# 常见英文缩写词典（分为三类处理方式）
+# 类型1: 按字母逐个读音（推荐）
+ABBREVIATIONS_BY_LETTER = {
+    "AI", "NASA", "CEO", "CFO", "CTO", "API", "URL", "HTTP", "HTML", "CSS",
+    "GDP", "CPI", "NBA", "FIFA", "WHO", "UNESCO", "VIP", "APP", "WiFi",
+    "GPS", "USB", "CPU", "GPU", "RAM", "ROM", "PDF", "DOC", "iOS",
+}
+
+# 类型2: 翻译为中文含义（适合专业术语）
+ABBREVIATIONS_TO_CHINESE = {
     "JavaScript": "杰瓦斯克瑞普特",
     "Python": "派森",
     "Java": "加瓦",
-    "GDP": "国内生产总值",
-    "CPI": "消费者物价指数",
-    "NBA": "美国职业篮球联赛",
-    "FIFA": "国际足球联合会",
-    "WHO": "世界卫生组织",
-    "UNESCO": "联合国教科文组织",
-    "VIP": "贵宾",
-    "APP": "应用程序",
-    "WiFi": "无线网络",
-    "GPS": "全球定位系统",
-    "USB": "通用串行总线",
-    "CPU": "中央处理器",
-    "GPU": "图形处理器",
-    "RAM": "随机存取存储器",
-    "ROM": "只读存储器",
-    "PDF": "便携式文档格式",
-    "DOC": "文档",
     "Excel": "艾克赛尔",
     "Word": "沃德",
     "PowerPoint": "鲍尔波因特",
@@ -49,7 +30,6 @@ ENGLISH_ABBREVIATIONS = {
     "Windows": "温豆斯",
     "Linux": "里纳克斯",
     "Android": "安桌",
-    "iOS": "爱偶艾斯",
 }
 
 # 常见多音字词典（格式：词语 -> 拼音标注）
@@ -123,7 +103,8 @@ class TextPreprocessor:
     """文本预处理器"""
     
     def __init__(self):
-        self.abbreviations = ENGLISH_ABBREVIATIONS
+        self.abbreviations_by_letter = ABBREVIATIONS_BY_LETTER
+        self.abbreviations_to_chinese = ABBREVIATIONS_TO_CHINESE
         self.polyphonic_words = POLYPHONOUS_WORDS
     
     def preprocess(self, text: str) -> str:
@@ -139,19 +120,25 @@ class TextPreprocessor:
         # 1. 基础清洗
         text = self.clean_text(text)
         
-        # 2. 数字规范化
+        # 2. 数字规范化（包括序号）
         text = self.normalize_numbers(text)
         
-        # 3. 英文缩写转换
+        # 3. 数字序号转换（新增）
+        text = self.normalize_list_markers(text)
+        
+        # 4. 英文缩写转换
         text = self.replace_abbreviations(text)
         
-        # 4. 特殊符号处理
+        # 5. 特殊符号处理
         text = self.handle_special_symbols(text)
         
         return text
     
     def clean_text(self, text: str) -> str:
         """基础文本清洗"""
+        # 去除带括号的场景提示信息（如：（笑声）、（掌声）等）
+        text = re.sub(r'[\(（][^\)）]*[\)）]', '', text)
+        
         # 去除多余空白
         text = re.sub(r'\s+', ' ', text)
         
@@ -176,11 +163,11 @@ class TextPreprocessor:
         """
         # 年份转换
         def replace_year(match):
-            year = match.group(0)
+            year = match.group(1)  # 只捕获数字部分
             digits = ''.join([self._digit_to_chinese(d) for d in year])
             return digits + '年'
         
-        text = re.sub(r'\d{4}年', replace_year, text)
+        text = re.sub(r'(\d{4})年', replace_year, text)  # 用捕获组
         
         # 百分比转换
         def replace_percent(match):
@@ -201,19 +188,91 @@ class TextPreprocessor:
         
         return text
     
+    def normalize_list_markers(self, text: str) -> str:
+        """
+        规范化列表序号和数字标记
+        
+        处理规则：
+        - "1. " → "第一点 "
+        - "1、" → "第一点、"
+        - "(1)" → "（一）"
+        - "第1步" → "第一步"
+        - "第2章" → "第二章"
+        """
+        # 1. 行首的阿拉伯数字序号 → 中文序号
+        # "1. 首先" → "第一点 首先"
+        def replace_numbered_list(match):
+            num = int(match.group(1))
+            return f'第{self._number_to_chinese(num)}点'
+        
+        text = re.sub(r'^\s*(\d+)\.\s*', replace_numbered_list, text, flags=re.MULTILINE)
+        
+        # "1、首先" → "第一点、首先"
+        text = re.sub(r'^\s*(\d+)、\s*', replace_numbered_list, text, flags=re.MULTILINE)
+        
+        # 2. 带括号的序号
+        # "(1)" → "（一）"
+        def replace_parenthesized(match):
+            num = int(match.group(1))
+            return f'（{self._number_to_chinese(num)}）'
+        
+        text = re.sub(r'\((\d+)\)', replace_parenthesized, text)
+        
+        # 3. "第X步/章/节/条" 格式
+        # "第1步" → "第一步"
+        def replace_ordinal(match):
+            num = int(match.group(1))
+            unit = match.group(2)
+            return f'第{self._number_to_chinese(num)}{unit}'
+        
+        text = re.sub(r'第(\d+)([步章节条])', replace_ordinal, text)
+        
+        return text
+    
     def replace_abbreviations(self, text: str) -> str:
-        """替换英文缩写为中文读音"""
-        # 按长度降序排列，优先匹配长的缩写
-        sorted_abbrs = sorted(
-            self.abbreviations.items(),
+        """
+        替换英文缩写为正确读音
+        
+        处理策略：
+        1. 按字母逐个读音（AI → A-I，CEO → C-E-O）
+        2. 翻译为中文音译（Python → 派森，Java → 加瓦）
+        """
+        # 第一步：处理需要翻译为中文的专有名词（优先匹配长的）
+        sorted_chinese = sorted(
+            self.abbreviations_to_chinese.items(),
             key=lambda x: len(x[0]),
             reverse=True
         )
         
-        for abbr, pronunciation in sorted_abbrs:
-            # 使用正则确保完整匹配单词边界
-            pattern = r'\b' + re.escape(abbr) + r'\b'
+        for abbr, pronunciation in sorted_chinese:
+            # 使用更宽松的正则，支持中英文混合
+            pattern = re.escape(abbr)
             text = re.sub(pattern, pronunciation, text, flags=re.IGNORECASE)
+        
+        # 第二步：处理按字母读音的缩写
+        # 使用正则找到所有连续的英文大写字母（2个或以上）
+        def replace_by_letter(match):
+            abbr = match.group(0)
+            # 检查是否在按字母读音列表中
+            if abbr.upper() in self.abbreviations_by_letter:
+                # 将每个字母用空格分开，让TTS逐个读
+                return ' '.join(list(abbr.upper()))
+            return abbr
+        
+        # 匹配连续的英文大写字母（2个或以上），前后可以是中文、空格或字符串边界
+        pattern = r'(?<![a-zA-Z])([A-Z]{2,})(?![a-zA-Z])'
+        text = re.sub(pattern, replace_by_letter, text)
+        
+        # 特殊处理：混合大小写的缩写（如 iOS、iPhone）
+        def replace_mixed_case(match):
+            abbr = match.group(0)
+            if abbr.upper() in self.abbreviations_by_letter:
+                return ' '.join(list(abbr.upper()))
+            return abbr
+        
+        # 匹配以大写字母开头，后面有小写字母，但总长度<=5的短词
+        pattern_mixed = r'(?<![a-zA-Z])([A-Z][a-z]{0,4})(?![a-zA-Z])'
+        text = re.sub(pattern_mixed, replace_mixed_case, text)
         
         return text
     
@@ -231,17 +290,31 @@ class TextPreprocessor:
         
         return text
     
-    def smart_split(self, text: str, max_chars: int = 40) -> List[str]:
+    def smart_split(self, text: str, max_chars: int = 45, mode: str = 'standard') -> List[str]:
         """
         智能分句，基于语义完整性而非固定字数
         
         Args:
             text: 待分句的文本
-            max_chars: 每段最大字符数
+            max_chars: 每段最大字符数（会被 mode 覆盖）
+            mode: 分段模式
+                - 'precise': 精准模式，30字/段（适合重要内容）
+                - 'standard': 标准模式，45字/段（默认推荐）
+                - 'fast': 快速模式，60字/段（适合草稿）
             
         Returns:
             分句列表
         """
+        # 根据模式调整 max_chars
+        mode_config = {
+            'precise': 30,
+            'standard': 45,
+            'fast': 60
+        }
+        
+        if mode in mode_config:
+            max_chars = mode_config[mode]
+        
         # 首先按句子结束符分割
         sentences = re.split(r'(?<=[。！？!?；;])', text)
         sentences = [s.strip() for s in sentences if s.strip()]
@@ -352,6 +425,16 @@ def preprocess_text(text: str) -> str:
     return get_preprocessor().preprocess(text)
 
 
-def smart_split_text(text: str, max_chars: int = 40) -> List[str]:
-    """便捷函数：智能分句"""
-    return get_preprocessor().smart_split(text, max_chars)
+def smart_split_text(text: str, max_chars: int = 45, mode: str = 'standard') -> List[str]:
+    """
+    便捷函数：智能分句
+    
+    Args:
+        text: 待分句的文本
+        max_chars: 每段最大字符数（会被 mode 覆盖）
+        mode: 分段模式 ('precise'/'standard'/'fast')
+    
+    Returns:
+        分句列表
+    """
+    return get_preprocessor().smart_split(text, max_chars, mode)

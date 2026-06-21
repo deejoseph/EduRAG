@@ -66,13 +66,13 @@ def create_app(config: dict = None) -> Flask:
 
     embedder = EmbeddingModel(
         model_name=embed_cfg.get('model_name', 'BAAI/bge-base-zh-v1.5'),
-        device=embed_cfg.get('device', None),
+        device='cpu',  # 强制使用CPU，避免CUDA错误
     )
 
     db = EduRAGDatabase(
         db_path=chroma_cfg.get('persist_directory', './data/chroma_db'),
         embedding_model=embed_cfg.get('model_name', 'BAAI/bge-base-zh-v1.5'),
-        device=embed_cfg.get('device', None),
+        device='cpu',  # 强制使用CPU
         embedder=embedder,
     )
 

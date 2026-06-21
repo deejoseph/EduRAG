@@ -4,6 +4,7 @@
 """
 
 import os
+import time as _time_module
 import subprocess
 import logging
 from pathlib import Path
@@ -121,7 +122,7 @@ class PodcastTTSGenerator:
             for i, segment in enumerate(segments, 1):
                 logger.info(f"合成第 {i}/{len(segments)} 段...")
                 
-                seg_output = self.output_dir / f"temp_seg_{i}_{int(time.time()*1000)}.wav"
+                seg_output = self.output_dir / f"temp_seg_{i}_{int(_time_module.time()*1000)}.wav"
                 
                 self._synthesize_single_segment(
                     text=segment,
@@ -186,8 +187,12 @@ class PodcastTTSGenerator:
         """
         inference_script = self.longcat_dir / "inference.py"
         
+        # 使用 tts 虚拟环境的 Python（与 LongCat 兼容）
+        tts_python = Path("C:/Users/deejo/anaconda3/envs/tts/python.exe")
+        python_exe = str(tts_python) if tts_python.exists() else "python"
+        
         cmd = [
-            "python", str(inference_script),
+            python_exe, str(inference_script),
             "--text", text,
             "--prompt_text", prompt_text,
             "--prompt_audio", ref_audio_path,
