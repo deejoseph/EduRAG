@@ -39,9 +39,11 @@ class PodcastTTSGenerator:
         """
         self.longcat_dir = Path(longcat_dir)
         self.model_dir = model_dir
-        # 使用绝对路径，避免工作目录不一致导致的问题
+        # 使用相对于项目根目录的路径，确保跨平台兼容性
         if output_dir is None:
-            self.output_dir = PROJECT_ROOT / "data" / "podcast_audio"
+            # tts_generator.py 在 podcast/ 目录下，所以父目录就是项目根目录
+            project_root = Path(__file__).parent.parent
+            self.output_dir = project_root / "data" / "podcast_audio"
         else:
             self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)

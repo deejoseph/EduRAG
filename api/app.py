@@ -147,8 +147,10 @@ def create_app(config: dict = None) -> Flask:
     @app.route('/podcast-audio/<filename>', methods=['GET'])
     def serve_podcast_audio(filename):
         """提供播客音频文件访问"""
-        # 使用绝对路径，避免工作目录不一致导致的问题
-        audio_dir = Path(__file__).parent.parent / 'data' / 'podcast_audio'
+        # 使用相对于项目根目录的路径，确保跨平台兼容性
+        # app.py 在 api/ 目录下，所以父目录就是项目根目录
+        project_root = Path(__file__).parent.parent
+        audio_dir = project_root / 'data' / 'podcast_audio'
         return send_from_directory(str(audio_dir), filename)
 
     # 健康检查
