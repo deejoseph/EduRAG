@@ -108,10 +108,22 @@ export const writingApi = {
     if (params.nfe !== undefined) formData.append('nfe', String(params.nfe));
     if (params.guidance_strength !== undefined) formData.append('guidance_strength', String(params.guidance_strength));
     
+    console.log('[TTS API] 开始调用，文本长度:', params.text.length);
+    const startTime = Date.now();
+    
     return apiClient.post<any, GeneratePodcastTTSResponse>('/writing/podcast-tts', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 300000, // TTS生成较慢，设置5分钟超时
+    }).then(response => {
+      const elapsed = Date.now() - startTime;
+      console.log('[TTS API] 请求完成，耗时:', elapsed, 'ms');
+      return response;
+    }).catch(error => {
+      const elapsed = Date.now() - startTime;
+      console.error('[TTS API] 请求失败，耗时:', elapsed, 'ms', error);
+      throw error;
     });
   },
 };
