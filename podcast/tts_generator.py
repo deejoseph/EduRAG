@@ -156,11 +156,30 @@ class PodcastTTSGenerator:
             logger.info("拼接音频段...")
             self._concatenate_audio(segment_files, str(output_path))
             
-            # 7. 清理临时文件
-            logger.info("清理临时文件...")
-            self._cleanup_temp_files(segment_files)
+            # 7. 保留临时文件作为独立段落（不删除）
+            # 将临时文件重命名为正式名称，方便用户逐段试听
+            final_segment_files = []
+            for i, seg_file in enumerate(segment_files, 1):
+                if Path(seg_file).name.startswith("temp_seg_"):
+                    # 跳过静音文件（不是以 temp_seg_ 开头）
+                    final_name = f"segment_{i:03d}_{Path(output_path).stem}.wav"
+                    final_path = self.output_dir / final_name
+                    try:
+                        Path(seg_file).rename(final_path)
+                        final_segment_files.append(str(final_path))
+                        logger.debug(f"临时文件已重命名: {final_name}")
+                    except Exception as e:
+                        logger.warning(f"重命名失败: {e}")
+                        final_segment_files.append(seg_file)  # 保留原路径
+                else:
+                    # 静音文件，直接删除
+                    try:
+                        Path(seg_file).unlink()
+                    except:
+                        pass
             
             logger.info(f"✅ 语音生成完成: {output_path}")
+            logger.info(f"📁 共生成 {len(final_segment_files)} 个独立段落文件")
             return str(output_path)
             
         except Exception as e:
