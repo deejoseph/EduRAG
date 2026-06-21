@@ -62,11 +62,11 @@ class PodcastTTSGenerator:
         ref_audio_path: str,
         prompt_text: str,
         output_filename: Optional[str] = None,
-        nfe: int = 18,
-        guidance_strength: float = 3.5,
+        nfe: int = 22,  # 增加NFE提高音质，减少破音
+        guidance_strength: float = 2.8,  # 降低引导强度，避免失真
         guidance_method: str = "apg",
         enable_split: bool = True,
-        split_max_chars: int = 40,
+        split_max_chars: int = 70,  # 增加分段长度，提高连贯性
         split_silence_ms: int = 200,
         seed: int = 1024,
     ) -> str:

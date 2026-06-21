@@ -33,8 +33,8 @@ const PodcastPage: React.FC = () => {
   const [refAudioFile, setRefAudioFile] = useState<File | null>(null);
   const [promptText, setPromptText] = useState('这是一段播客对话');
   const [ttsMode, setTtsMode] = useState<'precise' | 'standard' | 'fast'>('standard');
-  const [nfe, setNfe] = useState(18);
-  const [guidanceStrength, setGuidanceStrength] = useState(3.5);
+  const [nfe, setNfe] = useState(22); // 增加NFE提高音质，减少破音
+  const [guidanceStrength, setGuidanceStrength] = useState(2.8); // 降低引导强度，避免失真
   const [audioSegments, setAudioSegments] = useState<Array<{text: string; audio_url?: string; duration?: number; status: 'pending' | 'generating' | 'completed' | 'failed'}>>([]);
   const [savedAudioSegments, setSavedAudioSegments] = useState<Array<{text: string; audio_url?: string; duration?: number; status: 'pending' | 'generating' | 'completed' | 'failed'}>>([]); // 保存的分段数据，关闭弹窗后保留
   const [fullAudioUrl, setFullAudioUrl] = useState<string | null>(null); // 完整合并音频的URL
@@ -995,7 +995,7 @@ const PodcastPage: React.FC = () => {
                       onChange={(e) => setNfe(Number(e.target.value))}
                       style={{ width: 80, marginLeft: 8 }}
                     />
-                    <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>(10-30，默认18)</Text>
+                    <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>(推荐22-25，越高音质越好但速度越慢)</Text>
                   </div>
                   <div>
                     <Text>引导强度：</Text>
@@ -1008,7 +1008,7 @@ const PodcastPage: React.FC = () => {
                       onChange={(e) => setGuidanceStrength(Number(e.target.value))}
                       style={{ width: 80, marginLeft: 8 }}
                     />
-                    <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>(2.0-5.0，默认3.5)</Text>
+                    <Text type="secondary" style={{ fontSize: 12, marginLeft: 4 }}>(推荐2.5-3.2，过高会破音)</Text>
                   </div>
                 </Space>
               </div>
