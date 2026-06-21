@@ -1275,6 +1275,16 @@ def generate_podcast_tts():
             ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
             saved_path = os.path.join(ref_audio_dir, saved_audio_id)
             
+            # 如果直接路径不存在，尝试添加常见音频扩展名
+            if not os.path.exists(saved_path):
+                for ext in ['.mp3', '.wav', '.m4a', '.flac']:
+                    test_path = saved_path + ext
+                    if os.path.exists(test_path):
+                        saved_path = test_path
+                        saved_audio_id = saved_audio_id + ext
+                        logger.info(f"自动匹配到音频文件: {saved_audio_id}")
+                        break
+            
             if os.path.exists(saved_path):
                 ref_audio_path = Path(saved_path)
                 logger.info(f"使用已保存的参考音频: {saved_audio_id}")
@@ -1334,9 +1344,10 @@ def generate_podcast_tts():
         data, sr = sf.read(audio_path)
         duration_sec = len(data) / sr
         
-        # 清理临时文件
+        # 清理临时文件（仅当上传了新音频时才需要清理）
         import shutil
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        if 'temp_dir' in dir() and temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
         
         # 返回相对路径（用于前端访问）
         audio_url = f"/podcast-audio/{Path(audio_path).name}"
