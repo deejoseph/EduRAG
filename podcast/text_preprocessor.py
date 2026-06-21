@@ -13,6 +13,9 @@ ABBREVIATIONS_BY_LETTER = {
     "AI", "NASA", "CEO", "CFO", "CTO", "API", "URL", "HTTP", "HTML", "CSS",
     "GDP", "CPI", "NBA", "FIFA", "WHO", "UNESCO", "VIP", "APP", "WiFi",
     "GPS", "USB", "CPU", "GPU", "RAM", "ROM", "PDF", "DOC", "iOS",
+    # 新增：技术术语和常见缩写
+    "IP", "AR", "VR", "MR", "XR", "IoT", "SaaS", "PaaS", "IaaS",
+    "DNA", "RNA", "ATM", "SIM", "PIN", "SKU", "KPI", "OKR", "ROI",
 }
 
 # 类型2: 翻译为中文含义（适合专业术语）
@@ -160,6 +163,7 @@ class TextPreprocessor:
         - 2024年 -> 二零二四年
         - 50% -> 百分之五十
         - ¥100 -> 一百元
+        - 单独的数字 -> 中文数字
         """
         # 年份转换
         def replace_year(match):
@@ -185,6 +189,21 @@ class TextPreprocessor:
                 return f'{self._number_to_chinese(int(amount))}元'
         
         text = re.sub(r'[¥$]([\d.]+)', replace_money, text)
+        
+        # 处理单独的数字（不在字母或特殊符号前）
+        # 例如："有3个苹果" -> "有三个苹果"
+        def replace_standalone_number(match):
+            num_str = match.group(1)
+            # 如果数字长度<=4，转换为中文数字
+            if len(num_str) <= 4:
+                num = int(num_str)
+                return self._number_to_chinese(num)
+            else:
+                # 长数字逐位转换
+                return ''.join([self._digit_to_chinese(d) for d in num_str])
+        
+        # 匹配独立的数字（前后是中文或标点）
+        text = re.sub(r'(?<![\dA-Za-z])(\d+)(?![\dA-Za-z%\.])', replace_standalone_number, text)
         
         return text
     
@@ -236,7 +255,21 @@ class TextPreprocessor:
         处理策略：
         1. 按字母逐个读音（AI → A-I，CEO → C-E-O）
         2. 翻译为中文音译（Python → 派森，Java → 加瓦）
+        3. 处理数字+字母组合（5G → 五-G，3D → 三-D）
         """
+        # 第零步：处理数字+字母组合（如 5G, 3D, 4K）
+        def replace_number_letter(match):
+            num_part = match.group(1)
+            letter_part = match.group(2)
+            # 将数字转换为中文
+            num_chinese = ''.join([self._digit_to_chinese(d) for d in num_part])
+            # 字母部分用空格分开
+            letters_spaced = ' '.join(list(letter_part.upper()))
+            return f'{num_chinese} {letters_spaced}'
+        
+        # 匹配数字+大写字母的组合（如 5G, 3D, 4K, 8K）
+        text = re.sub(r'(\d+)([A-Z]{1,3})(?![a-zA-Z])', replace_number_letter, text)
+        
         # 第一步：处理需要翻译为中文的专有名词（优先匹配长的）
         sorted_chinese = sorted(
             self.abbreviations_to_chinese.items(),
@@ -282,8 +315,13 @@ class TextPreprocessor:
         text = re.sub(r'\.{3,}', '……', text)
         text = text.replace('...', '……')
         
-        # 破折号统一
-        text = re.sub(r'-{2,}', '——', text)
+        # 破折号转换为逗号+空格（表示停顿）
+        # TTS模型对逗号的停顿处理更好
+        text = re.sub(r'——{1,}', '， ', text)
+        text = re.sub(r'-{2,}', '， ', text)
+        
+        # 处理加号等特殊符号
+        text = text.replace('+', '加')
         
         # 去除多余的空格（保留中英文之间的空格）
         text = re.sub(r'(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])', '', text)
