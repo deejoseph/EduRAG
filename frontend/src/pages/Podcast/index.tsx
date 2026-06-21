@@ -37,6 +37,7 @@ const PodcastPage: React.FC = () => {
   const [guidanceStrength, setGuidanceStrength] = useState(3.5);
   const [audioSegments, setAudioSegments] = useState<Array<{text: string; audio_url?: string; duration?: number; status: 'pending' | 'generating' | 'completed' | 'failed'}>>([]);
   const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);
+  const [audioPlayer, setAudioPlayer] = useState<HTMLAudioElement | null>(null);
 
   // 加载素材列表
   const loadMaterials = async () => {
@@ -238,11 +239,6 @@ const PodcastPage: React.FC = () => {
       updatedSegments[index] = { ...segment, status: 'failed' };
       setAudioSegments(updatedSegments);
       message.error(`第 ${index + 1} 段语音生成失败: ${error.message || '未知错误'}`);
-    } finally {
-      // 确保即使出错也会重置 loading 状态
-      if (index === audioSegments.length - 1) {
-        setTtsGenerating(false);
-      }
     }
   };
 
@@ -255,29 +251,60 @@ const PodcastPage: React.FC = () => {
     
     setTtsGenerating(true);
     
-    // 逐段生成
-    for (let i = 0; i < audioSegments.length; i++) {
-      if (audioSegments[i].status === 'pending' || audioSegments[i].status === 'failed') {
-        await handleGenerateSegmentAudio(i);
+    try {
+      // 逐段生成
+      for (let i = 0; i < audioSegments.length; i++) {
+        if (audioSegments[i].status === 'pending' || audioSegments[i].status === 'failed') {
+          await handleGenerateSegmentAudio(i);
+        }
       }
+      
+      message.success('所有段落语音生成完成！');
+    } catch (error) {
+      console.error('批量生成失败:', error);
+      message.error('批量生成失败');
+    } finally {
+      // 确保总是重置 loading 状态
+      setTtsGenerating(false);
     }
-    
-    setTtsGenerating(false);
-    message.success('所有段落语音生成完成！');
   };
 
   // 播放/暂停音频
   const handlePlayAudio = (index: number, audioUrl: string) => {
-    if (currentPlayingIndex === index) {
+    if (currentPlayingIndex === index && audioPlayer) {
       // 暂停当前播放
-      setCurrentPlayingIndex(null);
-      // TODO: 实际暂停逻辑需要用到 Audio API
+      if (audioPlayer.paused) {
+        audioPlayer.play();
+      } else {
+        audioPlayer.pause();
+      }
     } else {
+      // 停止之前的音频
+      if (audioPlayer) {
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+      }
+      
       // 播放新音频
+      const newAudio = new Audio(audioUrl);
+      newAudio.onended = () => {
+        setCurrentPlayingIndex(null);
+        setAudioPlayer(null);
+      };
+      newAudio.onerror = () => {
+        message.error('音频加载失败');
+        setCurrentPlayingIndex(null);
+        setAudioPlayer(null);
+      };
+      
       setCurrentPlayingIndex(index);
-      const audio = new Audio(audioUrl);
-      audio.play();
-      audio.onended = () => setCurrentPlayingIndex(null);
+      setAudioPlayer(newAudio);
+      newAudio.play().catch((err) => {
+        console.error('播放失败:', err);
+        message.error('播放失败');
+        setCurrentPlayingIndex(null);
+        setAudioPlayer(null);
+      });
     }
   };
 
@@ -857,10 +884,20 @@ const PodcastPage: React.FC = () => {
                   }}
                 >
                   <Space direction="vertical" style={{ width: '100%' }}>
-                    {/* 段落文本 */}
+                    {/* 段落文本（可编辑） */}
                     <div>
                       <Badge count={index + 1} style={{ backgroundColor: '#722ed1' }} />
-                      <Text style={{ marginLeft: 8 }}>{segment.text}</Text>
+                      <TextArea
+                        value={segment.text}
+                        onChange={(e) => {
+                          const updatedSegments = [...audioSegments];
+                          updatedSegments[index] = { ...segment, text: e.target.value };
+                          setAudioSegments(updatedSegments);
+                        }}
+                        rows={3}
+                        style={{ marginTop: 8, fontSize: 14 }}
+                        placeholder="请输入或修改文案内容..."
+                      />
                       <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
                         ({segment.text.length}字)
                       </Text>
