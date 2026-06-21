@@ -772,6 +772,7 @@ def generate_podcast_script():
         
         # 基于素材主题进行RAG检索，获取相关知识库内容
         rag_context = ""
+        podcast_style_context = ""  # 播客风格参考
         try:
             from flask import current_app
             app_config = current_app.config.get('edurag', {})
@@ -784,7 +785,7 @@ def generate_podcast_script():
                 
                 logger.info(f"基于主题进行RAG检索: {query}")
                 
-                # 检索相关知识库内容
+                # 1. 检索相关知识库内容（chinese_essays）
                 results = retriever.search(
                     query=query,
                     collection_name='chinese_essays',
@@ -802,6 +803,27 @@ def generate_podcast_script():
                     if rag_parts:
                         rag_context = "\n\n".join(rag_parts)
                         logger.info(f"RAG检索到 {len(rag_parts)} 条相关知识")
+                
+                # 2. 检索历史播客文案（podcast_scripts），用于风格参考
+                podcast_results = retriever.search(
+                    query=query,
+                    collection_name='podcast_scripts',
+                    top_k=3,
+                    score_threshold=0.2
+                )
+                
+                if podcast_results:
+                    podcast_parts = []
+                    for i, result in enumerate(podcast_results, 1):
+                        content = result.get('content', '')
+                        metadata = result.get('metadata', {})
+                        topic = metadata.get('topic', '未知主题')
+                        if content and len(content) > 100:
+                            podcast_parts.append(f"历史播客{i}（主题：{topic}）:\n{content[:300]}...")
+                    
+                    if podcast_parts:
+                        podcast_style_context = "\n\n".join(podcast_parts)
+                        logger.info(f"检索到 {len(podcast_parts)} 条历史播客风格参考")
         except Exception as e:
             logger.warning(f"RAG检索失败: {e}，将仅使用素材生成")
         
@@ -821,6 +843,7 @@ def generate_podcast_script():
 3. 语言口语化，适合听觉接收
 4. 适当加入互动和过渡语
 5. 结尾有总结或启发
+6. 参考历史播客的风格和语气，保持一致性
 
 请直接输出播客文案，不需要解释过程。"""
         
@@ -832,16 +855,49 @@ def generate_podcast_script():
 
 {f'以下是相关知识库内容（供参考）：\n\n{rag_context}' if rag_context else ''}
 
+{f'以下是历史播客文案（请学习其风格和语气）：\n\n{podcast_style_context}' if podcast_style_context else ''}
+
 请基于以上素材生成播客文案："""
         
         result = llm.generate(user_prompt, system_prompt=system_prompt, temperature=0.7)
+        script_content = result.get('response', '')
+        
+        # 将生成的播客文案保存到播客知识库
+        try:
+            from flask import current_app
+            app_config = current_app.config.get('edurag', {})
+            db = app_config.get('db')
+            
+            if db and script_content:
+                # 提取主题作为元数据
+                topics = [mat['topic'] for mat in materials if mat.get('topic')]
+                main_topic = topics[0] if topics else '未命名'
+                
+                # 保存到播客知识库集合
+                import time
+                doc_id = f"podcast_{int(time.time()*1000)}"
+                db.add_documents(
+                    collection_name='podcast_scripts',
+                    documents=[script_content],
+                    metadatas=[{
+                        'topic': main_topic,
+                        'model': model,
+                        'materials_count': len(materials),
+                        'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                        'type': 'podcast_script'
+                    }],
+                    ids=[doc_id]
+                )
+                logger.info(f"播客文案已保存到知识库: {doc_id}")
+        except Exception as e:
+            logger.warning(f"保存播客文案到知识库失败: {e}")
         
         # 更新素材状态为已导入
         for material_id in material_ids:
             manager.update_material_status(material_id, 'imported')
         
         return success_response({
-            'script': result.get('response', ''),  # Ollama generate API 返回的是 'response' 字段
+            'script': script_content,
             'ai_model': model,
             'materials_count': len(materials)
         })
