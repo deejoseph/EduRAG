@@ -1117,17 +1117,23 @@ def generate_podcast_script():
 
 请直接输出播客文案，不需要解释过程。"""
         
+        # 构建 RAG 上下文部分
+        rag_section = ""
+        if rag_context:
+            rag_section = f"以下是相关知识库内容（供参考）：\n\n{rag_context}\n\n"
+        
+        # 构建播客风格参考部分
+        podcast_section = ""
+        if podcast_style_context:
+            podcast_section = f"以下是历史播客文案（请学习其风格和语气）：\n\n{podcast_style_context}\n\n"
+        
         user_prompt = f"""{prompt}
 
 以下是参考素材：
 
 {full_context}
 
-{"以下是相关知识库内容（供参考）：\n\n" + rag_context if rag_context else ''}
-
-{"以下是历史播客文案（请学习其风格和语气）：\n\n" + podcast_style_context if podcast_style_context else ''}
-
-请基于以上素材生成播客文案："""
+{rag_section}{podcast_section}请基于以上素材生成播客文案："""
         
         result = llm.generate(user_prompt, system_prompt=system_prompt, temperature=0.7)
         script_content = result.get('response', '')
