@@ -1503,18 +1503,20 @@ const PodcastPage: React.FC = () => {
                         }
                       } else {
                         // 如果只是修改了文本，更新已保存的角色的文本
-                        try {
-                          message.loading('正在更新文本...', 0);
-                          await writingApi.updateRefAudioText(savedRefAudioId, promptText);
-                          message.destroy();
-                          message.success('✅ 文本已更新');
-                          
-                          // 刷新列表
-                          loadRefAudios();
-                        } catch (error) {
-                          message.destroy();
-                          console.error('更新文本失败:', error);
-                          message.error('更新失败');
+                        if (savedRefAudioId) {
+                          try {
+                            message.loading('正在更新文本...', 0);
+                            await writingApi.updateRefAudioText(savedRefAudioId, promptText);
+                            message.destroy();
+                            message.success('✅ 文本已更新');
+                            
+                            // 刷新列表
+                            loadRefAudios();
+                          } catch (error) {
+                            message.destroy();
+                            console.error('更新文本失败:', error);
+                            message.error('更新失败');
+                          }
                         }
                       }
                     }}
