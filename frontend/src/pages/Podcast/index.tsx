@@ -201,13 +201,6 @@ const PodcastPage: React.FC = () => {
       return;
     }
     
-    const segment = audioSegments[index];
-    
-    // 更新状态为生成中
-    const updatedSegments = [...audioSegments];
-    updatedSegments[index] = { ...segment, status: 'generating' };
-    setAudioSegments(updatedSegments);
-    
     console.log(`开始生成第 ${index + 1} 段语音...`);
     
     // 如果不是批量生成模式，设置全局loading状态
@@ -216,11 +209,21 @@ const PodcastPage: React.FC = () => {
       setTtsGenerating(true);
     }
     
+    // 更新状态为生成中（使用函数式更新）
+    setAudioSegments(prevSegments => {
+      const updatedSegments = [...prevSegments];
+      updatedSegments[index] = { ...prevSegments[index], status: 'generating' };
+      return updatedSegments;
+    });
+    
     // 设置超时保护（6分钟）
     const timeoutId = setTimeout(() => {
       console.error(`第 ${index + 1} 段语音生成超时！`);
-      updatedSegments[index] = { ...segment, status: 'failed' };
-      setAudioSegments(updatedSegments);
+      setAudioSegments(prevSegments => {
+        const updatedSegments = [...prevSegments];
+        updatedSegments[index] = { ...prevSegments[index], status: 'failed' };
+        return updatedSegments;
+      });
       message.error(`第 ${index + 1} 段语音生成超时，请重试`);
       if (!isBatchMode) {
         setTtsGenerating(false);
@@ -231,7 +234,7 @@ const PodcastPage: React.FC = () => {
       console.log('开始调用TTS API...');
       // 直接调用API
       const response = await writingApi.generatePodcastTTS({
-        text: segment.text,
+        text: audioSegments[index].text,  // 从当前状态获取文本
         ref_audio: refAudioFile,
         prompt_text: promptText,  // 使用用户输入的提示文本
         nfe,
@@ -245,19 +248,22 @@ const PodcastPage: React.FC = () => {
       console.log('音频URL:', response.audio_url);
       console.log('时长:', response.duration_sec);
       
-      // 更新状态为完成
-      updatedSegments[index] = {
-        ...segment,
-        audio_url: response.audio_url,
-        duration: response.duration_sec,
-        status: 'completed'
-      };
-      console.log('更新后的segments:', updatedSegments[index]);
-      setAudioSegments(updatedSegments);
+      // 更新状态为完成（使用函数式更新）
+      setAudioSegments(prevSegments => {
+        const updatedSegments = [...prevSegments];
+        updatedSegments[index] = {
+          ...prevSegments[index],
+          audio_url: response.audio_url,
+          duration: response.duration_sec,
+          status: 'completed'
+        };
+        return updatedSegments;
+      });
+      
+      console.log(`第 ${index + 1} 段语音生成完成`);
       
       // 显示成功消息
       message.success(`第 ${index + 1} 段语音生成成功！`);
-      console.log(`第 ${index + 1} 段语音生成完成，状态已更新`);
       
       // 如果不是批量生成模式，重置loading状态
       if (!isBatchMode) {
@@ -269,8 +275,14 @@ const PodcastPage: React.FC = () => {
       
       console.error('生成语音失败:', error);
       console.error('错误详情:', error.response || error.message);
-      updatedSegments[index] = { ...segment, status: 'failed' };
-      setAudioSegments(updatedSegments);
+      
+      // 更新状态为失败（使用函数式更新）
+      setAudioSegments(prevSegments => {
+        const updatedSegments = [...prevSegments];
+        updatedSegments[index] = { ...prevSegments[index], status: 'failed' };
+        return updatedSegments;
+      });
+      
       message.error(`第 ${index + 1} 段语音生成失败: ${error.message || '未知错误'}`);
       
       // 如果不是批量生成模式，重置loading状态
