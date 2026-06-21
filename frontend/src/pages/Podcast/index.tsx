@@ -40,6 +40,32 @@ const PodcastPage: React.FC = () => {
   const [fullAudioUrl, setFullAudioUrl] = useState<string | null>(null); // 完整合并音频的URL
   const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);
   const [audioPlayer, setAudioPlayer] = useState<HTMLAudioElement | null>(null);
+  
+  // 从 localStorage 恢复文案和分段数据（页面刷新后保留）
+  useEffect(() => {
+    try {
+      const savedScript = localStorage.getItem('podcast_generated_script');
+      const savedSegments = localStorage.getItem('podcast_saved_segments');
+      const savedFullUrl = localStorage.getItem('podcast_full_audio_url');
+      
+      if (savedScript) {
+        console.log('[Podcast] 从 localStorage 恢复文案:', savedScript.length, '字符');
+        setGeneratedScript(savedScript);
+      }
+      
+      if (savedSegments) {
+        console.log('[Podcast] 从 localStorage 恢复分段数据');
+        setSavedAudioSegments(JSON.parse(savedSegments));
+      }
+      
+      if (savedFullUrl) {
+        console.log('[Podcast] 从 localStorage 恢复完整音频URL');
+        setFullAudioUrl(savedFullUrl);
+      }
+    } catch (error) {
+      console.error('[Podcast] 恢复本地数据失败:', error);
+    }
+  }, []);
 
   // 加载素材列表
   const loadMaterials = async () => {
@@ -57,6 +83,43 @@ const PodcastPage: React.FC = () => {
 
   useEffect(() => {
     loadMaterials();
+    
+    // 检查是否有未删除的文案，如果有则自动打开TTS弹窗
+    const checkSavedScript = () => {
+      try {
+        const savedScript = localStorage.getItem('podcast_generated_script');
+        if (savedScript && savedScript.length > 0) {
+          console.log('[Podcast] 检测到未删除的文案，长度:', savedScript.length, '字符');
+          console.log('[Podcast] 自动打开TTS弹窗，继续转语音进度');
+          
+          // 延迟打开，确保页面已加载
+          setTimeout(() => {
+            setGeneratedScript(savedScript);
+            
+            // 恢复分段数据
+            const savedSegments = localStorage.getItem('podcast_saved_segments');
+            if (savedSegments) {
+              setSavedAudioSegments(JSON.parse(savedSegments));
+              setAudioSegments(JSON.parse(savedSegments));
+            }
+            
+            // 恢复完整音频URL
+            const savedFullUrl = localStorage.getItem('podcast_full_audio_url');
+            if (savedFullUrl) {
+              setFullAudioUrl(savedFullUrl);
+            }
+            
+            // 打开TTS弹窗
+            setTtsModalVisible(true);
+            message.info('检测到未完成的转语音任务，已自动恢复');
+          }, 500);
+        }
+      } catch (error) {
+        console.error('[Podcast] 检查本地数据失败:', error);
+      }
+    };
+    
+    checkSavedScript();
   }, []);
 
   // 删除素材
@@ -145,9 +208,19 @@ const PodcastPage: React.FC = () => {
       setGeneratedScript(response.script);
       message.success(`成功生成播客文案（基于${response.materials_count}个素材）`);
       
+      // 保存文案到 localStorage（页面刷新后保留）
+      try {
+        localStorage.setItem('podcast_generated_script', response.script);
+        console.log('[Podcast] 文案已保存到 localStorage');
+      } catch (error) {
+        console.error('[Podcast] 保存文案失败:', error);
+      }
+      
       // 清除旧的TTS分段数据，因为文案已更新
       setSavedAudioSegments([]);
       setAudioSegments([]);
+      localStorage.removeItem('podcast_saved_segments');
+      localStorage.removeItem('podcast_full_audio_url');
       console.log('生成新文案，清除旧的分段数据');
       
       // 刷新素材列表（更新状态）
@@ -835,6 +908,17 @@ const PodcastPage: React.FC = () => {
                       setSavedAudioSegments([]);
                       setAudioSegments([]);
                       setFullAudioUrl(null);
+                      
+                      // 清除 localStorage
+                      try {
+                        localStorage.removeItem('podcast_generated_script');
+                        localStorage.removeItem('podcast_saved_segments');
+                        localStorage.removeItem('podcast_full_audio_url');
+                        console.log('[Podcast] 已清除 localStorage 数据');
+                      } catch (error) {
+                        console.error('[Podcast] 清除 localStorage 失败:', error);
+                      }
+                      
                       message.success('文案已清空');
                     }
                   });
@@ -873,6 +957,18 @@ const PodcastPage: React.FC = () => {
           // 关闭时保存当前的分段数据
           setSavedAudioSegments(audioSegments);
           console.log('关闭TTS弹窗，保存分段数据:', audioSegments.length, '段');
+          
+          // 保存到 localStorage
+          try {
+            localStorage.setItem('podcast_saved_segments', JSON.stringify(audioSegments));
+            if (fullAudioUrl) {
+              localStorage.setItem('podcast_full_audio_url', fullAudioUrl);
+            }
+            console.log('[Podcast] 分段数据已保存到 localStorage');
+          } catch (error) {
+            console.error('[Podcast] 保存分段数据失败:', error);
+          }
+          
           setTtsModalVisible(false);
           setRefAudioFile(null);
           setCurrentPlayingIndex(null);
@@ -883,6 +979,18 @@ const PodcastPage: React.FC = () => {
             // 关闭时保存当前的分段数据
             setSavedAudioSegments(audioSegments);
             console.log('点击关闭按钮，保存分段数据:', audioSegments.length, '段');
+            
+            // 保存到 localStorage
+            try {
+              localStorage.setItem('podcast_saved_segments', JSON.stringify(audioSegments));
+              if (fullAudioUrl) {
+                localStorage.setItem('podcast_full_audio_url', fullAudioUrl);
+              }
+              console.log('[Podcast] 分段数据已保存到 localStorage');
+            } catch (error) {
+              console.error('[Podcast] 保存分段数据失败:', error);
+            }
+            
             setTtsModalVisible(false);
             setRefAudioFile(null);
             setCurrentPlayingIndex(null);
