@@ -770,9 +770,14 @@ def generate_podcast_script():
         
         full_context = "\n\n".join(context_parts)
         
-        # 调用LLM生成播客文案
-        from core.llm_client import OllamaClient
-        llm = OllamaClient(model=model, timeout=180)
+        # 使用共享的LLM实例（避免重复创建导致的内存泄漏）
+        from flask import current_app
+        app_config = current_app.config.get('edurag', {})
+        llm = app_config.get('llm')
+        
+        if llm is None:
+            logger.error("LLM实例未初始化")
+            return error_response("服务端错误: LLM未初始化", 500)
         
         system_prompt = """你是一位专业的播客文案策划师，擅长将书面材料转化为生动有趣的播客对话。
 你的任务是根据提供的素材，创作出：

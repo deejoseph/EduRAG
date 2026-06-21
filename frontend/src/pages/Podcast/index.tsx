@@ -24,7 +24,7 @@ const PodcastPage: React.FC = () => {
   const [generateModalVisible, setGenerateModalVisible] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatedScript, setGeneratedScript] = useState<string>('');
-  const [prompt, setPrompt] = useState('请将这些素材整理成一段播客对话，风格轻松有趣');
+  const [prompt, setPrompt] = useState('请将这些素材整理成一段单人播客文案，风格轻松有趣。注意：不要出现【播客文案】、场景描述、氛围渲染、情绪标注、角色标记、括号符号等多余内容，只保留纯对话文本。');
   const [selectedModel, setSelectedModel] = useState('qwen3:8b');
   
   // TTS语音生成相关状态
