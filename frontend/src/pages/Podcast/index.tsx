@@ -312,16 +312,17 @@ const PodcastPage: React.FC = () => {
       
       setGeneratedScript(response.script);
       message.success(`成功生成播客文案（基于${response.materials_count}个素材）`);
-      
+            
       // 检查是否保存到数据库
+      console.log('[Podcast] 后端返回的 script_metadata:', response.script_metadata);
       if (response.script_metadata) {
         setCurrentScriptId(response.script_metadata.script_id);
         console.log('[Podcast] ✅ 文案已自动保存到数据库:', response.script_metadata.script_id);
-        message.success(`✅ 文案已自动保存到“我的文案”`);
+        message.success(`✅ 文案已自动保存到"我的文案"`);
       } else {
         // 后端保存失败，提示用户手动保存
         console.warn('[Podcast] ⚠️ 文案未保存到数据库（script_metadata 为 null）');
-        message.warning('⚠️ 文案生成成功，但未自动保存到数据库。请点击下方“保存到我的文案”按钮手动保存。', 5);
+        message.warning('⚠️ 文案生成成功，但未自动保存到数据库。请点击下方"保存到我的文案"按钮手动保存。', 5);
       }
       
       // 刷新文案列表（无论是否保存成功）
@@ -1096,7 +1097,7 @@ const PodcastPage: React.FC = () => {
               type="primary"
               icon={<SaveOutlined />}
               onClick={handleSaveScript}
-              disabled={!currentScriptId} // 如果已经有 script_id，说明已经保存过
+              disabled={!!currentScriptId} // 如果已经有 script_id，说明已经保存过，禁用按钮
               style={{ background: 'linear-gradient(135deg, #52c41a 0%, #73d13d 100%)' }}
             >
               {currentScriptId ? '✅ 已保存' : '💾 保存到我的文案'}
