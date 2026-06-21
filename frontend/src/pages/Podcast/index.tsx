@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Tag, Button, Space, Typography, Empty, Modal, message, Badge, Input, Select, Upload, Progress, Divider } from 'antd';
-import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined } from '@ant-design/icons';
+import { Card, Table, Tag, Button, Space, Typography, Empty, Modal, message, Badge, Input, Select, Upload, Progress, Divider, Tabs, List } from 'antd';
+import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined, CopyOutlined, EditOutlined } from '@ant-design/icons';
 import { writingApi } from '../../api/writing';
-import type { PodcastMaterial } from '../../api/writing';
+import type { PodcastMaterial, PodcastScript } from '../../api/writing';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -40,6 +40,12 @@ const PodcastPage: React.FC = () => {
   const [fullAudioUrl, setFullAudioUrl] = useState<string | null>(null); // 完整合并音频的URL
   const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);
   const [audioPlayer, setAudioPlayer] = useState<HTMLAudioElement | null>(null);
+  
+  // 文案列表管理（从数据库加载）
+  const [activeTab, setActiveTab] = useState<'materials' | 'scripts'>('materials');
+  const [scriptList, setScriptList] = useState<PodcastScript[]>([]);
+  const [loadingScripts, setLoadingScripts] = useState(false);
+  const [currentScriptId, setCurrentScriptId] = useState<string | null>(null); // 当前正在编辑的文案ID
   
   // 从 localStorage 恢复文案和分段数据（页面刷新后保留）
   useEffect(() => {
@@ -81,15 +87,114 @@ const PodcastPage: React.FC = () => {
     }
   };
 
+  // 加载文案列表（从数据库）
+  const loadScripts = async () => {
+    setLoadingScripts(true);
+    try {
+      const response = await writingApi.getPodcastScripts({ limit: 50 });
+      setScriptList(response.scripts || []);
+      console.log('[Podcast] 加载文案列表:', response.count, '个');
+    } catch (error) {
+      console.error('加载文案列表失败:', error);
+      message.error('加载文案列表失败');
+    } finally {
+      setLoadingScripts(false);
+    }
+  };
+
+  // 打开已有文案进行编辑
+  const handleOpenScript = async (script: PodcastScript) => {
+    try {
+      console.log('[Podcast] 打开文案:', script.script_id);
+      const response = await writingApi.getPodcastScript(script.script_id);
+      
+      setGeneratedScript(response.script.content || '');
+      setCurrentScriptId(script.script_id);
+      
+      // 清除旧的TTS分段数据
+      setSavedAudioSegments([]);
+      setAudioSegments([]);
+      setFullAudioUrl(null);
+      localStorage.removeItem('podcast_saved_segments');
+      localStorage.removeItem('podcast_full_audio_url');
+      
+      message.success(`已加载文案：${script.title}`);
+      
+      // 自动打开生成文案Modal
+      setGenerateModalVisible(true);
+    } catch (error) {
+      console.error('加载文案失败:', error);
+      message.error('加载文案失败');
+    }
+  };
+
+  // 复制文案（二次创作）
+  const handleDuplicateScript = async (script: PodcastScript) => {
+    try {
+      console.log('[Podcast] 复制文案:', script.script_id);
+      const response = await writingApi.duplicatePodcastScript(script.script_id);
+      
+      message.success(`文案已复制为新版本：${response.title}`);
+      
+      // 刷新列表
+      loadScripts();
+      
+      // 自动打开新副本
+      handleOpenScript({
+        ...script,
+        script_id: response.new_script_id,
+        version: response.version,
+        title: response.title
+      });
+    } catch (error) {
+      console.error('复制文案失败:', error);
+      message.error('复制文案失败');
+    }
+  };
+
+  // 删除文案
+  const handleDeleteScript = async (scriptId: string) => {
+    Modal.confirm({
+      title: '确认删除文案？',
+      content: '删除后无法恢复，确定要删除吗？',
+      okText: '确认删除',
+      cancelText: '取消',
+      okType: 'danger',
+      onOk: async () => {
+        try {
+          await writingApi.deletePodcastScript(scriptId);
+          message.success('文案已删除');
+          loadScripts(); // 刷新列表
+          
+          // 如果删除的是当前正在编辑的文案，清空状态
+          if (currentScriptId === scriptId) {
+            setGeneratedScript('');
+            setCurrentScriptId(null);
+            setSavedAudioSegments([]);
+            setAudioSegments([]);
+            setFullAudioUrl(null);
+            localStorage.removeItem('podcast_generated_script');
+            localStorage.removeItem('podcast_saved_segments');
+            localStorage.removeItem('podcast_full_audio_url');
+          }
+        } catch (error) {
+          console.error('删除文案失败:', error);
+          message.error('删除文案失败');
+        }
+      }
+    });
+  };
+
   useEffect(() => {
     loadMaterials();
+    loadScripts(); // 加载文案列表
     
-    // 检查是否有未删除的文案，如果有则自动打开TTS弹窗
+    // 检查是否有未删除的文案（localStorage），如果有则自动打开TTS弹窗
     const checkSavedScript = () => {
       try {
         const savedScript = localStorage.getItem('podcast_generated_script');
         if (savedScript && savedScript.length > 0) {
-          console.log('[Podcast] 检测到未删除的文案，长度:', savedScript.length, '字符');
+          console.log('[Podcast] 检测到未删除的文案（localStorage），长度:', savedScript.length, '字符');
           console.log('[Podcast] 自动打开TTS弹窗，继续转语音进度');
           
           // 延迟打开，确保页面已加载
@@ -208,13 +313,14 @@ const PodcastPage: React.FC = () => {
       setGeneratedScript(response.script);
       message.success(`成功生成播客文案（基于${response.materials_count}个素材）`);
       
-      // 保存文案到 localStorage（页面刷新后保留）
-      try {
-        localStorage.setItem('podcast_generated_script', response.script);
-        console.log('[Podcast] 文案已保存到 localStorage');
-      } catch (error) {
-        console.error('[Podcast] 保存文案失败:', error);
+      // 保存 script_id（后端已自动保存到数据库）
+      if (response.script_metadata) {
+        setCurrentScriptId(response.script_metadata.script_id);
+        console.log('[Podcast] 文案已保存到数据库:', response.script_metadata.script_id);
       }
+      
+      // 刷新文案列表
+      loadScripts();
       
       // 清除旧的TTS分段数据，因为文案已更新
       setSavedAudioSegments([]);
@@ -627,12 +733,17 @@ const PodcastPage: React.FC = () => {
       <Card>
         <div style={{ marginBottom: 24 }}>
           <Title level={2}>
-            <SoundOutlined /> 播客素材管理
+            <SoundOutlined /> 播客模块
           </Title>
           <Text type="secondary">
-            这里展示了从写作训练各阶段导入的素材，您可以查看、导出或删除这些素材。
+            管理播客素材和文案，生成语音内容。
           </Text>
         </div>
+
+        {/* Tabs 标签页 */}
+        <Tabs activeKey={activeTab} onChange={(key) => setActiveTab(key as 'materials' | 'scripts')}>
+          {/* 素材库标签页 */}
+          <Tabs.TabPane tab="素材库" key="materials">
 
         {/* 统计信息 */}
         <Space size="large" style={{ marginBottom: 16 }}>
@@ -709,6 +820,76 @@ const PodcastPage: React.FC = () => {
             ),
           }}
         />
+          </Tabs.TabPane>
+
+          {/* 我的文案标签页 */}
+          <Tabs.TabPane tab={`我的文案 (${scriptList.length})`} key="scripts">
+            <List
+              loading={loadingScripts}
+              dataSource={scriptList}
+              renderItem={(script) => (
+                <List.Item
+                  actions={[
+                    <Button 
+                      type="link" 
+                      icon={<EditOutlined />}
+                      onClick={() => handleOpenScript(script)}
+                    >
+                      打开
+                    </Button>,
+                    <Button 
+                      type="link" 
+                      icon={<CopyOutlined />}
+                      onClick={() => handleDuplicateScript(script)}
+                    >
+                      复制
+                    </Button>,
+                    <Button 
+                      type="link" 
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleDeleteScript(script.script_id)}
+                    >
+                      删除
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={
+                      <Space>
+                        <span>{script.title}</span>
+                        {script.version > 1 && <Tag color="blue">v{script.version}</Tag>}
+                        <Tag color={script.status === 'completed' ? 'green' : 'orange'}>
+                          {script.status === 'draft' ? '草稿' : script.status === 'completed' ? '完成' : '归档'}
+                        </Tag>
+                      </Space>
+                    }
+                    description={
+                      <Space size="large">
+                        <span>主题：{script.topic}</span>
+                        <span>素材数：{script.materials_count}</span>
+                        <span>模型：{script.model}</span>
+                        <span>创建时间：{script.created_at}</span>
+                      </Space>
+                    }
+                  />
+                </List.Item>
+              )}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={
+                      <Text type="secondary">
+                        暂无文案，请在“素材库”中选择素材后生成文案
+                      </Text>
+                    }
+                  />
+                ),
+              }}
+            />
+          </Tabs.TabPane>
+        </Tabs>
       </Card>
 
       {/* 查看详情弹窗 */}
@@ -903,13 +1084,26 @@ const PodcastPage: React.FC = () => {
                     okText: '确认清空',
                     cancelText: '取消',
                     okType: 'danger',
-                    onOk: () => {
+                    onOk: async () => {
+                      // 如果有 script_id，调用后端 API 删除
+                      if (currentScriptId) {
+                        try {
+                          await writingApi.deletePodcastScript(currentScriptId);
+                          message.success('文案已从数据库中删除');
+                          loadScripts(); // 刷新列表
+                        } catch (error) {
+                          console.error('删除文案失败:', error);
+                          message.error('删除文案失败');
+                        }
+                      }
+                      
                       setGeneratedScript('');
+                      setCurrentScriptId(null);
                       setSavedAudioSegments([]);
                       setAudioSegments([]);
                       setFullAudioUrl(null);
                       
-                      // 清除 localStorage
+                      // 清除 localStorage（兼容旧数据）
                       try {
                         localStorage.removeItem('podcast_generated_script');
                         localStorage.removeItem('podcast_saved_segments');
