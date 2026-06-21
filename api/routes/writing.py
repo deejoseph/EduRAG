@@ -1239,7 +1239,7 @@ def generate_podcast_tts():
     
     请求体（multipart/form-data）：
     - text: 要转换的文本
-    - ref_audio: 参考音频文件
+    - ref_audio: 参考音频文件（可以是文件或已上传的文件路径）
     - prompt_text: 参考音频对应的文本
     - model: 模型名称（可选，默认 qwen3:8b）
     - nfe: ODE步数（可选，默认 18）
@@ -1264,19 +1264,38 @@ def generate_podcast_tts():
         if not prompt_text:
             return error_response("必须提供 prompt_text 字段")
         
-        # 获取参考音频文件
-        if 'ref_audio' not in request.files:
-            return error_response("必须上传 ref_audio 文件")
+        # 获取参考音频文件或路径
+        ref_audio_path = None
         
-        ref_audio_file = request.files['ref_audio']
-        if ref_audio_file.filename == '':
-            return error_response("参考音频文件名为空")
-        
-        # 保存参考音频到临时目录
-        import tempfile
-        temp_dir = Path(tempfile.mkdtemp())
-        ref_audio_path = temp_dir / f"ref_{ref_audio_file.filename}"
-        ref_audio_file.save(str(ref_audio_path))
+        # 检查是否是已保存的音频文件路径
+        saved_audio_id = request.form.get('ref_audio_id')
+        if saved_audio_id:
+            import os
+            from flask import current_app
+            app_config = current_app.config.get('edurag', {})
+            upload_dir = app_config.get('upload_dir', './uploads')
+            ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
+            saved_path = os.path.join(ref_audio_dir, saved_audio_id)
+            
+            if os.path.exists(saved_path):
+                ref_audio_path = Path(saved_path)
+                logger.info(f"使用已保存的参考音频: {saved_audio_id}")
+            else:
+                return error_response(f"参考音频不存在: {saved_audio_id}", 404)
+        elif 'ref_audio' in request.files:
+            # 上传新的参考音频
+            ref_audio_file = request.files['ref_audio']
+            if ref_audio_file.filename == '':
+                return error_response("参考音频文件名为空")
+            
+            # 保存到临时目录
+            import tempfile
+            temp_dir = Path(tempfile.mkdtemp())
+            ref_audio_path = temp_dir / f"ref_{ref_audio_file.filename}"
+            ref_audio_file.save(str(ref_audio_path))
+            logger.info(f"上传新的参考音频: {ref_audio_file.filename}")
+        else:
+            return error_response("必须上传 ref_audio 文件或提供 ref_audio_id")
         
         logger.info(f"收到TTS请求: 文本长度={len(text)}, 参考音频={ref_audio_path}")
         
@@ -1317,4 +1336,122 @@ def generate_podcast_tts():
         return error_response(f"LongCat-AudioDiT 未正确配置: {e}", 500)
     except Exception as e:
         logger.error(f"TTS生成失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-ref-audios', methods=['GET'])
+def get_podcast_ref_audios():
+    """
+    获取已保存的参考音频列表
+    
+    返回：
+    - audios: 音频列表，每个包含 id, name, path, created_at
+    """
+    try:
+        import os
+        from flask import current_app
+        
+        app_config = current_app.config.get('edurag', {})
+        upload_dir = app_config.get('upload_dir', './uploads')
+        ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
+        
+        if not os.path.exists(ref_audio_dir):
+            return success_response({'audios': []})
+        
+        # 扫描目录下的所有音频文件
+        audios = []
+        for filename in os.listdir(ref_audio_dir):
+            if filename.endswith(('.wav', '.mp3', '.m4a', '.flac')):
+                filepath = os.path.join(ref_audio_dir, filename)
+                stat = os.stat(filepath)
+                audios.append({
+                    'id': filename,
+                    'name': filename,
+                    'path': filepath,
+                    'size': stat.st_size,
+                    'created_at': stat.st_ctime
+                })
+        
+        # 按创建时间降序排序
+        audios.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        logger.info(f"获取到 {len(audios)} 个参考音频")
+        return success_response({'audios': audios})
+    
+    except Exception as e:
+        logger.error(f"获取参考音频列表失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-ref-audios/upload', methods=['POST'])
+def upload_podcast_ref_audio():
+    """
+    上传并保存参考音频
+    """
+    try:
+        import os
+        import time
+        import uuid
+        from flask import current_app
+        
+        if 'ref_audio' not in request.files:
+            return error_response("必须上传 ref_audio 文件", 400)
+        
+        ref_audio_file = request.files['ref_audio']
+        if ref_audio_file.filename == '':
+            return error_response("参考音频文件名为空", 400)
+        
+        app_config = current_app.config.get('edurag', {})
+        upload_dir = app_config.get('upload_dir', './uploads')
+        ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
+        
+        # 确保目录存在
+        os.makedirs(ref_audio_dir, exist_ok=True)
+        
+        # 生成唯一文件名
+        ext = os.path.splitext(ref_audio_file.filename)[1]
+        unique_filename = f"{uuid.uuid4().hex}_{int(time.time())}{ext}"
+        filepath = os.path.join(ref_audio_dir, unique_filename)
+        
+        # 保存文件
+        ref_audio_file.save(filepath)
+        logger.info(f"参考音频已保存: {unique_filename}")
+        
+        return success_response({
+            'id': unique_filename,
+            'name': unique_filename,
+            'path': filepath,
+            'message': '参考音频已保存'
+        })
+    
+    except Exception as e:
+        logger.error(f"上传参考音频失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-ref-audios/<filename>', methods=['DELETE'])
+def delete_podcast_ref_audio(filename: str):
+    """
+    删除指定的参考音频
+    """
+    try:
+        import os
+        from flask import current_app
+        
+        app_config = current_app.config.get('edurag', {})
+        upload_dir = app_config.get('upload_dir', './uploads')
+        ref_audio_dir = os.path.join(upload_dir, 'podcast_ref_audios')
+        
+        filepath = os.path.join(ref_audio_dir, filename)
+        
+        if not os.path.exists(filepath):
+            return error_response(f"音频文件不存在: {filename}", 404)
+        
+        os.remove(filepath)
+        logger.info(f"已删除参考音频: {filename}")
+        
+        return success_response({'message': f'已删除: {filename}'})
+    
+    except Exception as e:
+        logger.error(f"删除参考音频失败: {e}")
         return error_response(f"服务端错误: {e}", 500)
