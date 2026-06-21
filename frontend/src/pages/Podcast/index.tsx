@@ -1327,40 +1327,26 @@ const PodcastPage: React.FC = () => {
                 <Upload
                   accept="audio/*"
                   maxCount={1}
-                  beforeUpload={async (file) => {
-                    try {
-                      message.loading('正在上传并保存...', 0);
-                      
-                      // 同时发送音频文件和当前的提示文本
-                      const response = await writingApi.uploadRefAudio(file, promptText);
-                      message.destroy();
-                      
-                      setSavedRefAudioId(response.id);
-                      localStorage.setItem('podcast_ref_audio_id', response.id);
-                      message.success(`✅ 音频及文本已保存: ${response.name}`);
-                      
-                      // 刷新列表
-                      loadRefAudios();
-                      
-                      return false; // 阻止默认上传行为
-                    } catch (error) {
-                      message.destroy();
-                      console.error('上传参考音频失败:', error);
-                      message.error('上传失败');
-                      return false;
-                    }
+                  beforeUpload={(file) => {
+                    // 只保存到前端状态，不立即上传到服务器
+                    setRefAudioFile(file);
+                    message.success(`已选择文件: ${file.name}，请输入文本后点击“保存角色”`);
+                    return false; // 阻止默认上传行为
                   }}
                   onRemove={() => {
                     setRefAudioFile(null);
-                    setSavedRefAudioId(null);
-                    localStorage.removeItem('podcast_ref_audio_id');
                   }}
                 >
                   <Button icon={<CloudUploadOutlined />}>
                     选择音频文件
                   </Button>
                 </Upload>
-                {savedRefAudioId && (
+                {refAudioFile && (
+                  <Text type="info" style={{ marginTop: 8, display: 'block' }}>
+                    ✓ 已选择: {refAudioFile.name}
+                  </Text>
+                )}
+                {savedRefAudioId && !refAudioFile && (
                   <Text type="success" style={{ marginTop: 8, display: 'block' }}>
                     ✓ 已选择: {refAudios.find(a => a.id === savedRefAudioId)?.name || '已保存的音频'}
                   </Text>
@@ -1453,6 +1439,49 @@ const PodcastPage: React.FC = () => {
                   💡 提示：输入参考音频对应的文本，有助于提高音色克隆质量
                 </Text>
               </div>
+
+              {/* 保存角色按钮 */}
+              {(refAudioFile || savedRefAudioId) && (
+                <div style={{ marginTop: 12 }}>
+                  <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    onClick={async () => {
+                      if (!promptText.trim()) {
+                        message.warning('请先输入参考音频对应的文本');
+                        return;
+                      }
+                      
+                      // 如果是新上传的音频，先上传到服务器
+                      if (refAudioFile) {
+                        try {
+                          message.loading('正在保存角色...', 0);
+                          const response = await writingApi.uploadRefAudio(refAudioFile, promptText);
+                          message.destroy();
+                          
+                          setSavedRefAudioId(response.id);
+                          localStorage.setItem('podcast_ref_audio_id', response.id);
+                          setRefAudioFile(null); // 清除临时文件
+                          message.success(`✅ 角色已保存: ${response.name}`);
+                          
+                          // 刷新列表
+                          loadRefAudios();
+                        } catch (error) {
+                          message.destroy();
+                          console.error('保存角色失败:', error);
+                          message.error('保存失败');
+                        }
+                      } else {
+                        // 如果只是修改了文本，更新已保存的角色的文本
+                        message.info('角色已更新');
+                      }
+                    }}
+                    block
+                  >
+                    保存角色（音频 + 文本）
+                  </Button>
+                </div>
+              )}
 
               <Divider style={{ margin: '12px 0' }} />
 
