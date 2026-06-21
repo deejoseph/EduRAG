@@ -210,12 +210,21 @@ const PodcastPage: React.FC = () => {
     
     console.log(`开始生成第 ${index + 1} 段语音...`);
     
+    // 如果不是批量生成模式，设置全局loading状态
+    const isBatchMode = ttsGenerating;
+    if (!isBatchMode) {
+      setTtsGenerating(true);
+    }
+    
     // 设置超时保护（6分钟）
     const timeoutId = setTimeout(() => {
       console.error(`第 ${index + 1} 段语音生成超时！`);
       updatedSegments[index] = { ...segment, status: 'failed' };
       setAudioSegments(updatedSegments);
       message.error(`第 ${index + 1} 段语音生成超时，请重试`);
+      if (!isBatchMode) {
+        setTtsGenerating(false);
+      }
     }, 360000);
     
     try {
@@ -245,7 +254,15 @@ const PodcastPage: React.FC = () => {
       };
       console.log('更新后的segments:', updatedSegments[index]);
       setAudioSegments(updatedSegments);
+      
+      // 显示成功消息
       message.success(`第 ${index + 1} 段语音生成成功！`);
+      console.log(`第 ${index + 1} 段语音生成完成，状态已更新`);
+      
+      // 如果不是批量生成模式，重置loading状态
+      if (!isBatchMode) {
+        setTtsGenerating(false);
+      }
     } catch (error: any) {
       // 清除超时保护
       clearTimeout(timeoutId);
@@ -255,6 +272,11 @@ const PodcastPage: React.FC = () => {
       updatedSegments[index] = { ...segment, status: 'failed' };
       setAudioSegments(updatedSegments);
       message.error(`第 ${index + 1} 段语音生成失败: ${error.message || '未知错误'}`);
+      
+      // 如果不是批量生成模式，重置loading状态
+      if (!isBatchMode) {
+        setTtsGenerating(false);
+      }
     }
   };
 
