@@ -737,7 +737,10 @@ def get_podcast_scripts():
                 'created_at': metadata.get('created_at'),
                 'updated_at': metadata.get('updated_at'),
                 'materials_count': metadata.get('materials_count', 0),
-                'model': metadata.get('model', 'unknown')
+                'model': metadata.get('model', 'unknown'),
+                # 作文相关字段(从metadata中提取)
+                'question_type': metadata.get('question_type'),  # 题目类型
+                'question_name': metadata.get('question_name')   # 题库题目名称
             })
         
         # 按时间戳降序排序（最新的在前）
