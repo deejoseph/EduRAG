@@ -18,6 +18,7 @@ from subjects.chinese.prompt_loader import (
 )
 from api.routes import build_where_filter
 from podcast.material_manager import get_podcast_manager
+from core.db_manager import EduRAGDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -1623,4 +1624,126 @@ def delete_podcast_ref_audio(filename: str):
     
     except Exception as e:
         logger.error(f"删除参考音频失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-materials/<material_id>/add-to-rag', methods=['POST'])
+def add_podcast_material_to_rag(material_id: str):
+    """
+    将播客素材/文案添加到RAG知识库
+    
+    请求体（可选）：
+    {
+        "content": "要存入的内容（可选，默认使用素材内容）",
+        "title": "标题（可选，默认自动生成）"
+    }
+    
+    响应体：
+    {
+        "success": true,
+        "message": "已存入RAG知识库",
+        "chunk_count": 3
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        
+        # 获取素材或文案内容
+        manager = get_podcast_manager()
+        material = manager.get_material(material_id)
+        
+        if not material:
+            # 尝试从文案数据库查找
+            script_mgr = None
+            from podcast.script_manager import PodcastScriptManager
+            script_mgr = PodcastScriptManager()
+            script = script_mgr.get_script(material_id)
+            if script:
+                content = script.get('content', '')
+                title = script.get('title', f'播客文案_{material_id}')
+                topic = script.get('topic', '未知主题')
+            else:
+                return error_response(f"素材或文案不存在: {material_id}", 404)
+        else:
+            content = data.get('content', material.get('content', ''))
+            topic = material.get('topic', '未知主题')
+            title = data.get('title', f"播客素材_{material_id}")
+        
+        if not content:
+            return error_response("内容为空，无法存入RAG")
+        
+        # 初始化RAG数据库
+        db = EduRAGDatabase()
+        collection_name = 'chinese_essays'
+        
+        # 确保集合存在
+        if collection_name not in [c.name for c in db.client.list_collections()]:
+            db.create_collection(collection_name)
+        
+        collection = db.get_collection(collection_name)
+        
+        # 按段落分块（每段作为一个chunk）
+        chunks = [chunk.strip() for chunk in content.split('\n\n') if len(chunk.strip()) > 20]
+        
+        if not chunks:
+            # 如果没有段落分隔，按句子分割
+            chunks = [chunk.strip() for chunk in content.split('。') if len(chunk.strip()) > 10]
+        
+        if not chunks:
+            return error_response("内容格式不正确，无法分块")
+        
+        # 生成IDs和元数据
+        import hashlib
+        import time
+        chunk_ids = []
+        metadatas = []
+        
+        for i, chunk in enumerate(chunks):
+            # 生成唯一ID
+            chunk_hash = hashlib.md5(f"{material_id}_{i}_{time.time()}".encode()).hexdigest()
+            chunk_id = f"podcast_{chunk_hash}"
+            chunk_ids.append(chunk_id)
+            
+            # 构建元数据
+            metadata = {
+                'source_type': 'podcast_script',  # 标识为播客文案来源
+                'material_id': material_id,
+                'topic': topic,
+                'title': title,
+                'chunk_index': i,
+                'total_chunks': len(chunks),
+                'created_at': int(time.time())
+            }
+            metadatas.append(metadata)
+        
+        # 生成embeddings
+        embeddings = db.embedder.encode(chunks)
+        
+        # 添加到ChromaDB
+        collection.add(
+            ids=chunk_ids,
+            embeddings=embeddings,
+            documents=chunks,
+            metadatas=metadatas
+        )
+        
+        # 更新素材状态（如果存在）
+        if material:
+            material['in_rag'] = True
+            material['rag_added_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+            file_path = manager.storage_path / f"{material_id}.json"
+            import json
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(material, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"✅ 播客素材已存入RAG: {material_id}, {len(chunks)}个chunks")
+        
+        return success_response({
+            'message': '已存入RAG知识库',
+            'chunk_count': len(chunks),
+            'collection': collection_name
+        })
+    
+    except Exception as e:
+        logger.error(f"存入RAG失败: {e}", exc_info=True)
         return error_response(f"服务端错误: {e}", 500)

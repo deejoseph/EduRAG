@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Tag, Button, Space, Typography, Empty, Modal, message, Badge, Input, Select, Upload, Progress, Divider, Tabs, List } from 'antd';
-import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined, CopyOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons';
+import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined, CopyOutlined, EditOutlined, SaveOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { writingApi } from '../../api/writing';
 import type { PodcastMaterial, PodcastScript } from '../../api/writing';
 
@@ -298,6 +298,31 @@ const PodcastPage: React.FC = () => {
     link.click();
     URL.revokeObjectURL(url);
     message.success('已导出');
+  };
+
+  // 将素材存入RAG知识库
+  const handleAddToRag = async (material: PodcastMaterial) => {
+    Modal.confirm({
+      title: '存入RAG知识库',
+      content: `确定要将此素材存入RAG知识库吗？\n\n题目：${material.topic}\n阶段：${material.stage}`,
+      okText: '确认存入',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const response = await writingApi.addPodcastMaterialToRag(material.id, {
+            title: `播客素材_${material.topic}`
+          });
+          
+          if (response.success) {
+            message.success(`✅ 已存入RAG知识库，共 ${response.chunk_count} 个片段`);
+            loadMaterials(); // 刷新列表更新状态
+          }
+        } catch (error) {
+          console.error('存入RAG失败:', error);
+          message.error('存入RAG失败');
+        }
+      },
+    });
   };
 
   // 批量删除
@@ -833,6 +858,22 @@ const PodcastPage: React.FC = () => {
       },
     },
     {
+      title: 'RAG状态',
+      dataIndex: 'in_rag',
+      key: 'in_rag',
+      width: 120,
+      render: (inRag: boolean) => {
+        if (inRag) {
+          return (
+            <Tag icon={<DatabaseOutlined />} color="success">
+              已存入RAG
+            </Tag>
+          );
+        }
+        return <Tag color="default">未存入</Tag>;
+      },
+    },
+    {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
@@ -842,7 +883,7 @@ const PodcastPage: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 280,
       fixed: 'right' as const,
       render: (_: any, record: PodcastMaterial) => (
         <Space size="small">
@@ -862,6 +903,17 @@ const PodcastPage: React.FC = () => {
           >
             导出
           </Button>
+          {!record.in_rag && (
+            <Button
+              type="link"
+              size="small"
+              icon={<DatabaseOutlined />}
+              onClick={() => handleAddToRag(record)}
+              style={{ color: '#52c41a' }}
+            >
+              存入RAG
+            </Button>
+          )}
           <Button
             type="link"
             size="small"

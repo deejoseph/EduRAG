@@ -38,6 +38,8 @@ export interface PodcastMaterial {
   ai_model: string;
   status: string;
   created_at: string;
+  in_rag?: boolean; // 是否已存入RAG知识库
+  rag_added_at?: string; // 存入RAG的时间
 }
 
 export interface GeneratePodcastRequest {
@@ -151,6 +153,13 @@ export const writingApi = {
 
   deletePodcastMaterial: (materialId: string) =>
     apiClient.delete<any, { success: boolean; message: string }>(`/writing/podcast-materials/${materialId}`),
+
+  // 将播客素材存入RAG知识库
+  addPodcastMaterialToRag: (materialId: string, data?: { content?: string; title?: string }) =>
+    apiClient.post<any, { success: boolean; message: string; chunk_count: number; collection: string }>(
+      `/writing/podcast-materials/${materialId}/add-to-rag`,
+      data || {}
+    ),
 
   generatePodcastScript: (params: GeneratePodcastRequest) =>
     apiClient.post<any, { success: boolean; script: string; ai_model: string; materials_count: number; script_metadata?: any }>('/writing/podcast-generate', params),
