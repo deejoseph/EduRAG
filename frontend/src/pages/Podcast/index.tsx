@@ -523,14 +523,23 @@ const PodcastPage: React.FC = () => {
 
   // 下载RSS XML文件
   const handleDownloadRSS = () => {
-    if (!rssDownloadUrl) {
-      message.warning('没有可下载的文件');
+    if (!rssXmlContent) {
+      message.warning('没有可下载的内容');
       return;
     }
     
-    // 通过API下载
-    window.open(rssDownloadUrl, '_blank');
-    message.success('正在下载RSS文件...');
+    // 直接在前端创建Blob并下载，不依赖后端API
+    const blob = new Blob([rssXmlContent], { type: 'application/xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `podcast_feed_${new Date().getTime()}.xml`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    message.success('✅ RSS文件已下载');
   };
 
   // 将文案分割成段落（基于语义完整性）

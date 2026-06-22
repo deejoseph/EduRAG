@@ -59,19 +59,44 @@ class PodcastDeployer:
         self.db = EduRAGDatabase()
         
     def get_completed_scripts(self, limit=50):
-        """获取所有已完成的播客文案"""
+        """获取所有已完成的播客文案（从JSON状态管理器读取）"""
         if not self.db.collection_exists('podcast_scripts'):
             print("[WARN] 播客文案集合不存在")
             return []
         
+        # 从JSON状态管理器获取所有completed状态的文案ID
+        from podcast.script_state_manager import get_script_state_manager
+        state_mgr = get_script_state_manager()
+        all_states = state_mgr.get_all_states()
+        completed_script_ids = [
+            sid for sid, state in all_states.items() 
+            if state.get('status') == 'completed'
+        ]
+        
+        if not completed_script_ids:
+            print("[WARN] 没有找到状态为completed的播客文案")
+            return []
+        
         collection = self.db.get_collection('podcast_scripts')
-        results = collection.get(
-            where={
+        
+        # 构建查询条件
+        if len(completed_script_ids) == 1:
+            where_filter = {
                 '$and': [
                     {'type': 'podcast_script'},
-                    {'status': 'completed'}
+                    {'script_id': completed_script_ids[0]}
                 ]
-            },
+            }
+        else:
+            where_filter = {
+                '$and': [
+                    {'type': 'podcast_script'},
+                    {'$or': [{'script_id': sid} for sid in completed_script_ids]}
+                ]
+            }
+        
+        results = collection.get(
+            where=where_filter,
             limit=limit,
             include=['metadatas', 'documents']
         )
