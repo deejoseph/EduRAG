@@ -50,6 +50,12 @@ const PodcastPage: React.FC = () => {
   const [loadingScripts, setLoadingScripts] = useState(false);
   const [currentScriptId, setCurrentScriptId] = useState<string | null>(null); // 当前正在编辑的文案ID
   
+  // 文案列表筛选和分页
+  const [scriptPage, setScriptPage] = useState(1);
+  const [scriptPageSize, setScriptPageSize] = useState(10);
+  const [stageFilter, setStageFilter] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
+  
   // RSS相关状态
   const [rssModalVisible, setRssModalVisible] = useState(false);
   const [generatingRSS, setGeneratingRSS] = useState(false);
@@ -88,6 +94,11 @@ const PodcastPage: React.FC = () => {
     }
   }, []);
 
+  // 当筛选条件变化时，重新加载文案列表
+  useEffect(() => {
+    loadScripts();
+  }, [stageFilter, statusFilter]);
+
   // 加载素材列表
   const loadMaterials = async () => {
     setLoading(true);
@@ -106,7 +117,11 @@ const PodcastPage: React.FC = () => {
   const loadScripts = async () => {
     setLoadingScripts(true);
     try {
-      const response = await writingApi.getPodcastScripts({ limit: 50 });
+      const params: any = { limit: 100 }; // 获取较多数据用于前端分页
+      if (stageFilter) params.stage = stageFilter;
+      if (statusFilter) params.status = statusFilter;
+      
+      const response = await writingApi.getPodcastScripts(params);
       setScriptList(response.scripts || []);
       console.log('[Podcast] 加载文案列表:', response.count, '个');
     } catch (error) {
@@ -1102,9 +1117,9 @@ const PodcastPage: React.FC = () => {
 
           {/* 我的文案标签页 */}
           <Tabs.TabPane tab={`我的文案 (${scriptList.length})`} key="scripts">
-            {/* RSS功能按钮 */}
+            {/* RSS功能按钮和筛选器 */}
             <div style={{ marginBottom: 16 }}>
-              <Space>
+              <Space wrap>
                 <Button
                   type="primary"
                   icon={<SoundOutlined />}
@@ -1113,72 +1128,179 @@ const PodcastPage: React.FC = () => {
                 >
                   生成RSS Feed
                 </Button>
+                
+                <Text>阶段：</Text>
+                <Select
+                  style={{ width: 120 }}
+                  placeholder="全部阶段"
+                  allowClear
+                  value={stageFilter}
+                  onChange={(value) => setStageFilter(value)}
+                >
+                  <Option value="shenti">审题分析</Option>
+                  <Option value="gousi">构思提纲</Option>
+                  <Option value="xiezuo">写作辅助</Option>
+                  <Option value="pinggu">写作评估</Option>
+                </Select>
+                
+                <Text>状态：</Text>
+                <Select
+                  style={{ width: 100 }}
+                  placeholder="全部状态"
+                  allowClear
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value)}
+                >
+                  <Option value="draft">草稿</Option>
+                  <Option value="completed">完成</Option>
+                  <Option value="archived">归档</Option>
+                </Select>
+                
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   将已完成的文案生成为RSS Feed，可提交到小宇宙等播客平台
                 </Text>
               </Space>
             </div>
             
-            <List
-              loading={loadingScripts}
-              dataSource={scriptList}
-              renderItem={(script) => (
-                <List.Item
-                  actions={[
-                    <Button 
-                      type="link" 
-                      icon={<EditOutlined />}
-                      onClick={() => handleOpenScript(script)}
-                    >
-                      打开
-                    </Button>,
-                    script.status !== 'completed' && (
+            {/* Table组件展示文案列表 */}
+            <Table
+              columns={[
+                {
+                  title: '阶段',
+                  dataIndex: 'stage',
+                  key: 'stage',
+                  width: 100,
+                  render: (stage: string) => {
+                    const stageMap: Record<string, { text: string; color: string }> = {
+                      shenti: { text: '审题分析', color: 'blue' },
+                      gousi: { text: '构思提纲', color: 'green' },
+                      xiezuo: { text: '写作辅助', color: 'orange' },
+                      pinggu: { text: '写作评估', color: 'purple' }
+                    };
+                    const config = stageMap[stage] || { text: '未设置', color: 'default' };
+                    return <Tag color={config.color}>{config.text}</Tag>;
+                  }
+                },
+                {
+                  title: '标题',
+                  dataIndex: 'title',
+                  key: 'title',
+                  ellipsis: true,
+                  render: (title: string, record: PodcastScript) => (
+                    <Space>
+                      <span>{title}</span>
+                      {record.version > 1 && <Tag color="blue">v{record.version}</Tag>}
+                    </Space>
+                  )
+                },
+                {
+                  title: '主题',
+                  dataIndex: 'topic',
+                  key: 'topic',
+                  width: 150,
+                  ellipsis: true
+                },
+                {
+                  title: '音频',
+                  key: 'audio',
+                  width: 80,
+                  render: (_: any, record: PodcastScript) => (
+                    <Badge 
+                      status="processing" 
+                      text="待关联" 
+                      // TODO: 后续根据实际音频关联状态显示
+                    />
+                  )
+                },
+                {
+                  title: 'RAG状态',
+                  key: 'rag',
+                  width: 100,
+                  render: () => (
+                    <Tag color="default">未加入</Tag>
+                    // TODO: 后续根据实际RAG状态显示
+                  )
+                },
+                {
+                  title: '状态',
+                  dataIndex: 'status',
+                  key: 'status',
+                  width: 80,
+                  render: (status: string) => (
+                    <Tag color={status === 'completed' ? 'green' : status === 'draft' ? 'orange' : 'default'}>
+                      {status === 'draft' ? '草稿' : status === 'completed' ? '完成' : '归档'}
+                    </Tag>
+                  )
+                },
+                {
+                  title: '创建时间',
+                  dataIndex: 'created_at',
+                  key: 'created_at',
+                  width: 180,
+                  sorter: (a: PodcastScript, b: PodcastScript) => (a.created_at || '').localeCompare(b.created_at || '')
+                },
+                {
+                  title: '操作',
+                  key: 'action',
+                  width: 280,
+                  fixed: 'right',
+                  render: (_: any, record: PodcastScript) => (
+                    <Space size="small">
                       <Button 
                         type="link" 
-                        style={{ color: '#52c41a' }}
-                        onClick={() => handleUpdateScriptStatus(script.script_id, 'completed')}
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => handleOpenScript(record)}
                       >
-                        标记为完成
+                        打开
                       </Button>
-                    ),
-                    <Button 
-                      type="link" 
-                      icon={<CopyOutlined />}
-                      onClick={() => handleDuplicateScript(script)}
-                    >
-                      复制
-                    </Button>,
-                    <Button 
-                      type="link" 
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => handleDeleteScript(script.script_id)}
-                    >
-                      删除
-                    </Button>,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
-                      <Space>
-                        <span>{script.title}</span>
-                        {script.version > 1 && <Tag color="blue">v{script.version}</Tag>}
-                        <Tag color={script.status === 'completed' ? 'green' : 'orange'}>
-                          {script.status === 'draft' ? '草稿' : script.status === 'completed' ? '完成' : '归档'}
-                        </Tag>
-                      </Space>
-                    }
-                    description={
-                      <Space size="large">
-                        <span>主题：{script.topic}</span>
-                        <span>素材数：{script.materials_count}</span>
-                        <span>模型：{script.model}</span>
-                        <span>创建时间：{script.created_at}</span>
-                      </Space>
-                    }
-                  />
-                </List.Item>
-              )}
+                      {record.status !== 'completed' && (
+                        <Button 
+                          type="link" 
+                          size="small"
+                          style={{ color: '#52c41a' }}
+                          onClick={() => handleUpdateScriptStatus(record.script_id, 'completed')}
+                        >
+                          标记为完成
+                        </Button>
+                      )}
+                      <Button 
+                        type="link" 
+                        size="small"
+                        icon={<CopyOutlined />}
+                        onClick={() => handleDuplicateScript(record)}
+                      >
+                        复制
+                      </Button>
+                      <Button 
+                        type="link" 
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => handleDeleteScript(record.script_id)}
+                      >
+                        删除
+                      </Button>
+                    </Space>
+                  )
+                }
+              ]}
+              dataSource={scriptList}
+              rowKey="script_id"
+              loading={loadingScripts}
+              pagination={{
+                current: scriptPage,
+                pageSize: scriptPageSize,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                showTotal: (total) => `共 ${total} 条`,
+                pageSizeOptions: ['10', '20', '50', '100'],
+                onChange: (page, pageSize) => {
+                  setScriptPage(page);
+                  setScriptPageSize(pageSize);
+                }
+              }}
+              scroll={{ x: 1200 }}
               locale={{
                 emptyText: (
                   <Empty
@@ -1189,7 +1311,7 @@ const PodcastPage: React.FC = () => {
                       </Text>
                     }
                   />
-                ),
+                )
               }}
             />
           </Tabs.TabPane>
