@@ -630,6 +630,9 @@ const PodcastPage: React.FC = () => {
     
     setTtsGenerating(true);
     
+    // 显示文案合成中的提示
+    const loadingMessage = message.loading('🎵 正在合成完整音频，请稍候...', 0);
+    
     try {
       // 第一步：先生成完整合并音频（用于下载）
       console.log('[批量生成] 开始生成完整合并音频...');
@@ -642,6 +645,10 @@ const PodcastPage: React.FC = () => {
         nfe,
         guidance_strength: guidanceStrength,
       });
+      
+      // 关闭loading提示
+      loadingMessage();
+      message.success('✅ 完整音频合成完成，开始逐段生成...');
       
       // 保存完整音频URL（用于下载）
       setFullAudioUrl(fullResponse.audio_url);
@@ -689,6 +696,8 @@ const PodcastPage: React.FC = () => {
       message.success('所有段落语音生成完成！');
       
     } catch (error) {
+      // 确保关闭loading提示
+      loadingMessage();
       console.error('[批量生成] 失败:', error);
       message.error('批量生成失败');
     } finally {
