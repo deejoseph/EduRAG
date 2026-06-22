@@ -251,12 +251,34 @@ class PodcastDeployer:
                 cwd=git_repo_path
             )
             
-            # 推送
-            subprocess.run(
-                ['git', 'push', 'origin', 'main'],
-                check=True,
+            # 推送前先pull,避免冲突
+            print("[INFO] 拉取远程更新...")
+            pull_result = subprocess.run(
+                ['git', 'pull', '--rebase', 'origin', 'main'],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
                 cwd=git_repo_path
             )
+            
+            if pull_result.returncode != 0:
+                print(f"[WARN] Git pull失败: {pull_result.stderr}")
+                print("[INFO] 尝试直接推送...")
+            else:
+                print("[OK] 远程更新已同步")
+            
+            # 推送
+            push_result = subprocess.run(
+                ['git', 'push', 'origin', 'main'],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                cwd=git_repo_path
+            )
+            
+            if push_result.returncode != 0:
+                print(f"[ERROR] Git推送失败: {push_result.stderr}")
+                return False
             
             print("[OK] 成功推送到GitHub")
             print("[INFO] GitHub Pages将在1-2分钟内自动部署")
