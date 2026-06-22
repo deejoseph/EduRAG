@@ -69,8 +69,11 @@ const QuotesAndMaterialsPage: React.FC = () => {
   // AI搜索加载状态
   const [aiSearching, setAiSearching] = useState(false);
 
+  console.log('[QuotesAndMaterials] 组件已渲染');
+
   // 加载学习统计
   useEffect(() => {
+    console.log('[QuotesAndMaterials] useEffect 触发');
     loadLearningStats();
   }, []);
 
