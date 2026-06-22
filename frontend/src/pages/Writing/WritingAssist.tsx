@@ -8,6 +8,7 @@ import {
   FileTextOutlined,
   SoundOutlined,
   StarOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import { useWritingStore } from '../../store/writingStore';
 import { writingApi } from '../../api/writing';
@@ -38,6 +39,17 @@ const WritingAssist: React.FC = () => {
   const [outline, setOutline] = useState('');
   const [generatedEssay, setGeneratedEssay] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [essayAbortController, setEssayAbortController] = useState<AbortController | null>(null);
+
+  // 中范文生成
+  const handleAbortEssay = () => {
+    if (essayAbortController) {
+      essayAbortController.abort();
+      setEssayAbortController(null);
+      setGenerating(false);
+      message.info('已中范文生成');
+    }
+  };
 
   // 多AI生成相关状态
   const [multiAiMode, setMultiAiMode] = useState(false);
@@ -83,16 +95,21 @@ const WritingAssist: React.FC = () => {
       message.warning('请输入构思提纲');
       return;
     }
-    
+      
     setGenerating(true);
+      
+    // 创建 AbortController
+    const abortController = new AbortController();
+    setEssayAbortController(abortController);
+      
     try {
       const response = await writingApi.generateEssay({
         topic: topic || '未知题目',
         outline: outline.trim(),
         genre: '议论文',
-      });
-      
-      // 提取第一个篇AI生成的范文
+      }, abortController.signal);
+        
+      // 提取第一篇AI生成的范文
       if (response.results && response.results.length > 0) {
         const essayContent = response.results[0].content;
         setGeneratedEssay(essayContent);
@@ -100,11 +117,19 @@ const WritingAssist: React.FC = () => {
       } else {
         message.error('范文生成失败，请重试');
       }
-    } catch (error) {
+    } catch (error: any) {
+      // 处理中止错误
+      if (error.name === 'AbortError') {
+        console.log('用户中生了范文生成');
+        message.info('已中范文生成');
+        return;
+      }
+        
       console.error('生成范文失败:', error);
       message.error('生成范文失败');
     } finally {
       setGenerating(false);
+      setEssayAbortController(null);
     }
   };
 
@@ -271,17 +296,28 @@ const WritingAssist: React.FC = () => {
               rows={10}
               style={{ fontSize: 14, lineHeight: 1.8 }}
             />
-            <Button
-              type="primary"
-              icon={<FileTextOutlined />}
-              onClick={handleGenerateEssay}
-              loading={generating}
-              block
-              size="large"
-              style={{ marginTop: 12 }}
-            >
-              {generating ? '正在生成范文...' : '生成范文'}
-            </Button>
+            <Space style={{ width: '100%', marginTop: 12 }}>
+              <Button
+                type="primary"
+                icon={<FileTextOutlined />}
+                onClick={handleGenerateEssay}
+                loading={generating}
+                size="large"
+                style={{ flex: 1 }}
+              >
+                {generating ? '正在生成范文...' : '生成范文'}
+              </Button>
+              {generating && (
+                <Button
+                  danger
+                  icon={<StopOutlined />}
+                  onClick={handleAbortEssay}
+                  size="large"
+                >
+                  中止
+                </Button>
+              )}
+            </Space>
           </Col>
 
           <Col xs={24} md={12}>

@@ -142,8 +142,10 @@ export const writingApi = {
   multiAiOutline: (params: MultiAiRequest) =>
     apiClient.post<any, { success: boolean; results: MultiAiResult[]; count: number }>('/writing/multi-ai/outline', params),
 
-  generateEssay: (params: { topic: string; outline: string; genre?: string; models?: string[] }) =>
-    apiClient.post<any, { success: boolean; results: MultiAiResult[]; count: number }>('/writing/generate-essay', params),
+  generateEssay: (params: { topic: string; outline: string; genre?: string; models?: string[] }, signal?: AbortSignal) =>
+    apiClient.post<any, { success: boolean; results: MultiAiResult[]; count: number }>('/writing/generate-essay', params, {
+      signal // 传入AbortSignal支持中止
+    }),
 
   multiAiEvaluate: (params: MultiAiRequest) =>
     apiClient.post<any, { success: boolean; results: MultiAiResult[]; count: number }>('/writing/multi-ai/evaluate', params),
