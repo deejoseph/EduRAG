@@ -138,33 +138,73 @@ class PodcastDeployer:
         return str(audio_path)
     
     def generate_rss_feed(self, scripts):
-        """生成RSS Feed XML文件"""
+        """
+        生成RSS Feed XML文件（支持4个独立阶段）
+        
+        为每个阶段生成独立的feed文件：
+        - feed-shenti.xml (审题分析)
+        - feed-gousi.xml (构思提纲)
+        - feed-xiezuo.xml (写作辅助)
+        - feed-pinggu.xml (写作评估)
+        """
         print("[INFO] 生成RSS Feed...")
         
-        # 准备数据格式
-        script_list = []
+        # 按stage分组
+        from podcast.script_state_manager import get_script_state_manager
+        state_mgr = get_script_state_manager()
+        all_states = state_mgr.get_all_states()
+        
+        stage_scripts = {
+            'shenti': [],
+            'gousi': [],
+            'xiezuo': [],
+            'pinggu': []
+        }
+        
         for script in scripts:
             metadata = script['metadata']
             content = script['content']
-            
-            # 构建音频URL（GitHub Pages URL）
             script_id = metadata.get('script_id', '')
-            audio_url = f"https://dee422.github.io/audio/{script_id}.mp3"
             
-            # 替换metadata中的音频URL
+            # 获取stage
+            stage = all_states.get(script_id, {}).get('stage')
+            if not stage or stage not in stage_scripts:
+                print(f"[WARN] 文案 {script_id} 未设置stage或stage无效，跳过")
+                continue
+            
+            # 构建音频URL
+            audio_url = f"https://dee422.github.io/audio/{script_id}.mp3"
             metadata_copy = metadata.copy()
             metadata_copy['audio_url'] = audio_url
             
-            script_list.append((metadata_copy, content))
+            stage_scripts[stage].append((metadata_copy, content))
         
-        # 生成RSS XML
-        rss_xml = _generate_rss_xml(script_list)
+        # 为每个stage生成独立的feed文件
+        stage_names = {
+            'shenti': '审题分析',
+            'gousi': '构思提纲',
+            'xiezuo': '写作辅助',
+            'pinggu': '写作评估'
+        }
         
-        # 写入文件
-        with open(self.rss_file, 'w', encoding='utf-8') as f:
-            f.write(rss_xml)
+        generated_files = []
+        for stage, stage_name in stage_names.items():
+            if not stage_scripts[stage]:
+                print(f"[WARN] 阶段 '{stage_name}' 没有completed文案，跳过")
+                continue
+            
+            # 生成该阶段的RSS XML
+            rss_xml = _generate_rss_xml(stage_scripts[stage])
+            
+            # 写入文件
+            rss_file = self.output_dir / f"feed-{stage}.xml"
+            with open(rss_file, 'w', encoding='utf-8') as f:
+                f.write(rss_xml)
+            
+            print(f"[OK] {stage_name} RSS已生成: {rss_file}")
+            generated_files.append(str(rss_file))
         
-        print(f"[OK] RSS Feed已生成: {self.rss_file}")
+        print(f"[INFO] 共生成 {len(generated_files)} 个RSS Feed文件")
         return True
     
     def commit_and_push(self, pages_repo_path=None):

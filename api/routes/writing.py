@@ -1776,6 +1776,7 @@ def generate_podcast_rss_feed():
     生成播客文案的RSS 2.0 Feed（含iTunes扩展）
     
     查询参数：
+    - stage: 阶段过滤（shenti/gousi/xiezuo/pinggu，可选，不传则生成所有阶段的混合feed）
     - script_ids: 逗号分隔的文案ID列表（可选，默认包含所有completed状态的文案）
     - topic: 主题过滤（可选）
     - limit: 数量限制（默认50）
@@ -1784,7 +1785,8 @@ def generate_podcast_rss_feed():
     {
         "success": true,
         "rss_xml": "<?xml version='1.0' encoding='UTF-8'?><rss version='2.0'...",
-        "download_url": "/api/writing/podcast-scripts/rss/download?token=xxx"
+        "download_url": "/api/writing/podcast-scripts/rss/download?token=xxx",
+        "stage": "shenti"  // 如果指定了stage参数
     }
     """
     try:
@@ -1797,9 +1799,15 @@ def generate_podcast_rss_feed():
             return error_response("数据库未初始化", 500)
         
         # 获取查询参数
+        stage = request.args.get('stage')  # 新增stage参数
         script_ids_param = request.args.get('script_ids')
         topic = request.args.get('topic')
         limit = int(request.args.get('limit', 50))
+        
+        # 验证stage参数
+        valid_stages = ['shenti', 'gousi', 'xiezuo', 'pinggu']
+        if stage and stage not in valid_stages:
+            return error_response(f"无效的stage值: {stage}，必须是 {valid_stages} 之一", 400)
         
         # 检查集合是否存在
         if not db.collection_exists('podcast_scripts'):
@@ -1814,6 +1822,14 @@ def generate_podcast_rss_feed():
             sid for sid, state in all_states.items() 
             if state.get('status') == 'completed'
         ]
+        
+        # 如果指定了stage，进一步过滤
+        if stage:
+            completed_script_ids = [
+                sid for sid in completed_script_ids
+                if all_states.get(sid, {}).get('stage') == stage
+            ]
+            logger.info(f"✅ 阶段过滤: {stage}, 找到 {len(completed_script_ids)} 个completed文案")
         
         # 构建where条件
         where_conditions = [{'type': 'podcast_script'}]
@@ -1880,11 +1896,17 @@ def generate_podcast_rss_feed():
         
         logger.info(f"✅ RSS Feed已生成，包含 {len(results_list)} 个文案")
         
-        return success_response({
+        response_data = {
             'rss_xml': rss_xml,
             'download_url': f'/api/writing/podcast-scripts/rss/download?token={token}',
             'count': len(results_list)
-        })
+        }
+        
+        # 如果指定了stage，返回stage信息
+        if stage:
+            response_data['stage'] = stage
+        
+        return success_response(response_data)
     
     except Exception as e:
         logger.error(f"生成RSS Feed失败: {e}", exc_info=True)
