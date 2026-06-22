@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Tag, Button, Space, Typography, Empty, Modal, message, Badge, Input, Select, Upload, Progress, Divider, Tabs, List } from 'antd';
+import { Card, Table, Tag, Button, Space, Typography, Empty, Modal, message, Badge, Input, Select, Upload, Progress, Divider, Tabs, List, Alert } from 'antd';
 import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined, CopyOutlined, EditOutlined, SaveOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { writingApi } from '../../api/writing';
 import type { PodcastMaterial, PodcastScript } from '../../api/writing';
@@ -49,6 +49,12 @@ const PodcastPage: React.FC = () => {
   const [scriptList, setScriptList] = useState<PodcastScript[]>([]);
   const [loadingScripts, setLoadingScripts] = useState(false);
   const [currentScriptId, setCurrentScriptId] = useState<string | null>(null); // 当前正在编辑的文案ID
+  
+  // RSS相关状态
+  const [rssModalVisible, setRssModalVisible] = useState(false);
+  const [generatingRSS, setGeneratingRSS] = useState(false);
+  const [rssXmlContent, setRssXmlContent] = useState<string>('');
+  const [rssDownloadUrl, setRssDownloadUrl] = useState<string>('');
   
   // 从 localStorage 恢复文案和分段数据（页面刷新后保留）
   useEffect(() => {
@@ -462,6 +468,57 @@ const PodcastPage: React.FC = () => {
     }
     
     setTtsModalVisible(true);
+  };
+
+  // 生成RSS Feed
+  const handleGenerateRSS = async () => {
+    setGeneratingRSS(true);
+    try {
+      const response = await writingApi.generatePodcastRSS({
+        limit: 50,
+      });
+      
+      if (response.success && response.rss_xml) {
+        setRssXmlContent(response.rss_xml);
+        setRssDownloadUrl(response.download_url);
+        setRssModalVisible(true);
+        message.success(`✅ RSS Feed已生成，包含 ${response.count} 个文案`);
+      } else {
+        message.error('生成RSS失败');
+      }
+    } catch (error) {
+      console.error('生成RSS失败:', error);
+      message.error('生成RSS失败');
+    } finally {
+      setGeneratingRSS(false);
+    }
+  };
+
+  // 复制RSS XML到剪贴板
+  const handleCopyRSS = () => {
+    if (!rssXmlContent) {
+      message.warning('没有可复制的内容');
+      return;
+    }
+    
+    navigator.clipboard.writeText(rssXmlContent).then(() => {
+      message.success('✅ RSS XML已复制到剪贴板');
+    }).catch((error) => {
+      console.error('复制失败:', error);
+      message.error('复制失败');
+    });
+  };
+
+  // 下载RSS XML文件
+  const handleDownloadRSS = () => {
+    if (!rssDownloadUrl) {
+      message.warning('没有可下载的文件');
+      return;
+    }
+    
+    // 通过API下载
+    window.open(rssDownloadUrl, '_blank');
+    message.success('正在下载RSS文件...');
   };
 
   // 将文案分割成段落（基于语义完整性）
@@ -1024,6 +1081,23 @@ const PodcastPage: React.FC = () => {
 
           {/* 我的文案标签页 */}
           <Tabs.TabPane tab={`我的文案 (${scriptList.length})`} key="scripts">
+            {/* RSS功能按钮 */}
+            <div style={{ marginBottom: 16 }}>
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<SoundOutlined />}
+                  onClick={handleGenerateRSS}
+                  loading={generatingRSS}
+                >
+                  生成RSS Feed
+                </Button>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  将已完成的文案生成为RSS Feed，可提交到小宇宙等播客平台
+                </Text>
+              </Space>
+            </div>
+            
             <List
               loading={loadingScripts}
               dataSource={scriptList}
@@ -1801,6 +1875,80 @@ const PodcastPage: React.FC = () => {
               )}
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* RSS Feed弹窗 */}
+      <Modal
+        title={
+          <Space>
+            <SoundOutlined />
+            <span>RSS Feed</span>
+          </Space>
+        }
+        open={rssModalVisible}
+        onCancel={() => setRssModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setRssModalVisible(false)}>
+            关闭
+          </Button>,
+          <Button
+            key="copy"
+            icon={<CopyOutlined />}
+            onClick={handleCopyRSS}
+          >
+            复制XML
+          </Button>,
+          <Button
+            key="download"
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleDownloadRSS}
+          >
+            下载XML文件
+          </Button>,
+        ]}
+        width={900}
+      >
+        <div>
+          <Alert
+            message="✅ RSS Feed已生成"
+            description={
+              <div>
+                <p>此RSS Feed包含 <strong>{scriptList.filter(s => s.status === 'completed').length}</strong> 个已完成的播客文案。</p>
+                <p style={{ marginTop: 8 }}>
+                  <strong>如何提交到小宇宙：</strong>
+                  <ol style={{ paddingLeft: 20, marginTop: 4 }}>
+                    <li>点击“下载XML文件”按钮，保存RSS文件</li>
+                    <li>将文件上传到你的网站或云存储（需要公开可访问的URL）</li>
+                    <li>在小宇宙APP中，使用“订阅”功能输入RSS URL</li>
+                    <li>等待审核通过后即可发布</li>
+                  </ol>
+                </p>
+              </div>
+            }
+            type="success"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          
+          <Text strong>RSS XML预览：</Text>
+          <div
+            style={{
+              maxHeight: 400,
+              overflowY: 'auto',
+              background: '#f5f5f5',
+              padding: 12,
+              borderRadius: 4,
+              fontFamily: 'monospace',
+              fontSize: 12,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              marginTop: 8,
+            }}
+          >
+            {rssXmlContent || '加载中...'}
+          </div>
         </div>
       </Modal>
     </div>

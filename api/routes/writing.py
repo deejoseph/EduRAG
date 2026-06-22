@@ -1747,3 +1747,244 @@ def add_podcast_material_to_rag(material_id: str):
     except Exception as e:
         logger.error(f"存入RAG失败: {e}", exc_info=True)
         return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/rss', methods=['GET'])
+def generate_podcast_rss_feed():
+    """
+    生成播客文案的RSS 2.0 Feed（含iTunes扩展）
+    
+    查询参数：
+    - script_ids: 逗号分隔的文案ID列表（可选，默认包含所有completed状态的文案）
+    - topic: 主题过滤（可选）
+    - limit: 数量限制（默认50）
+    
+    响应体：
+    {
+        "success": true,
+        "rss_xml": "<?xml version='1.0' encoding='UTF-8'?><rss version='2.0'...",
+        "download_url": "/api/writing/podcast-scripts/rss/download?token=xxx"
+    }
+    """
+    try:
+        from flask import current_app
+        app_config = current_app.config.get('edurag', {})
+        db = app_config.get('db')
+        
+        if not db:
+            return error_response("数据库未初始化", 500)
+        
+        # 获取查询参数
+        script_ids_param = request.args.get('script_ids')
+        topic = request.args.get('topic')
+        limit = int(request.args.get('limit', 50))
+        
+        # 构建where条件
+        where_filter = {'type': 'podcast_script', 'status': 'completed'}
+        if topic:
+            where_filter['topic'] = topic
+        
+        # 检查集合是否存在
+        if not db.collection_exists('podcast_scripts'):
+            return error_response("播客文案集合尚未创建", 404)
+        
+        collection = db.get_collection('podcast_scripts')
+        results = collection.get(
+            where=where_filter,
+            limit=limit,
+            include=['metadatas', 'documents']
+        )
+        
+        if not results['metadatas']:
+            return error_response("没有找到符合条件的播客文案", 404)
+        
+        # 如果指定了script_ids，进行过滤
+        if script_ids_param:
+            requested_ids = [sid.strip() for sid in script_ids_param.split(',')]
+            filtered_results = []
+            for metadata, document in zip(results['metadatas'], results['documents']):
+                if metadata.get('script_id') in requested_ids:
+                    filtered_results.append((metadata, document))
+            results_list = filtered_results
+        else:
+            results_list = list(zip(results['metadatas'], results['documents']))
+        
+        if not results_list:
+            return error_response("没有找到指定的播客文案", 404)
+        
+        # 生成RSS XML
+        rss_xml = _generate_rss_xml(results_list)
+        
+        # 生成临时下载链接（使用token）
+        import hashlib
+        import time
+        token = hashlib.md5(f"{time.time()}_{len(rss_xml)}".encode()).hexdigest()
+        
+        # 缓存RSS内容（5分钟过期）
+        cache_key = f"rss_cache_{token}"
+        import redis
+        try:
+            r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            r.setex(cache_key, 300, rss_xml)  # 5分钟过期
+        except:
+            # Redis不可用时，将RSS内容存储在内存中
+            logger.warning("Redis不可用，RSS内容将无法缓存")
+        
+        logger.info(f"✅ RSS Feed已生成，包含 {len(results_list)} 个文案")
+        
+        return success_response({
+            'rss_xml': rss_xml,
+            'download_url': f'/api/writing/podcast-scripts/rss/download?token={token}',
+            'count': len(results_list)
+        })
+    
+    except Exception as e:
+        logger.error(f"生成RSS Feed失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/rss/download', methods=['GET'])
+def download_podcast_rss():
+    """
+    下载RSS Feed XML文件
+    
+    查询参数：
+    - token: 下载令牌（从generate_podcast_rss_feed接口获取）
+    
+    响应：直接返回XML文件下载
+    """
+    try:
+        from flask import make_response
+        token = request.args.get('token')
+        
+        if not token:
+            return error_response("缺少token参数", 400)
+        
+        # 从缓存中获取RSS内容
+        import redis
+        rss_xml = None
+        try:
+            r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+            cache_key = f"rss_cache_{token}"
+            rss_xml = r.get(cache_key)
+        except:
+            logger.warning("Redis不可用，无法获取缓存的RSS内容")
+        
+        if not rss_xml:
+            return error_response("RSS内容不存在或已过期，请重新生成", 404)
+        
+        # 返回XML文件
+        response = make_response(rss_xml)
+        response.headers['Content-Type'] = 'application/xml; charset=utf-8'
+        response.headers['Content-Disposition'] = f'attachment; filename="podcast_feed_{token[:8]}.xml"'
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"下载RSS Feed失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)
+
+
+def _generate_rss_xml(script_list):
+    """
+    生成符合RSS 2.0 + iTunes播客扩展标准的XML
+    
+    参数：
+    script_list: [(metadata, document), ...] 元组列表
+    
+    返回：
+    str: RSS XML字符串
+    """
+    from datetime import datetime
+    import html
+    
+    # RSS头部
+    rss_header = '''<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>EduRAG 播客精选</title>
+    <link>https://edurang.example.com</link>
+    <description>基于AI生成的高考作文范文播客，提供高质量的语文学习素材。</description>
+    <language>zh-cn</language>
+    <itunes:author>EduRAG团队</itunes:author>
+    <itunes:summary>这是一个专注于高中语文教育的播客，通过AI技术生成优质作文范文，帮助学生提升写作能力。</itunes:summary>
+    <itunes:explicit>no</itunes:explicit>
+    <itunes:image href="https://edurang.example.com/podcast-cover.png"/>
+    <itunes:category text="Education">
+      <itunes:category text="Language Learning"/>
+    </itunes:category>
+'''
+    
+    # 生成每个文案的item
+    items_xml = ''
+    for metadata, content in script_list:
+        script_id = metadata.get('script_id', '')
+        title = html.escape(metadata.get('title', '未命名'))
+        topic = html.escape(metadata.get('topic', '未知'))
+        created_at = metadata.get('created_at', '')
+        model = metadata.get('model', 'unknown')
+        
+        # 格式化发布日期（RFC 2822）
+        pub_date = _format_rfc2822_date(created_at)
+        
+        # 生成音频URL（假设有TTS服务）
+        # 注意：实际使用时需要替换为真实的音频URL
+        audio_url = f"https://edurang.example.com/audio/{script_id}.mp3"
+        
+        # 计算时长（估算：每分钟约250字）
+        word_count = len(content) if content else 0
+        duration_minutes = max(1, word_count // 250)
+        duration_str = f"00:{duration_minutes:02d}:00"
+        
+        # 清理内容，去除多余空白和特殊字符
+        clean_content = html.escape(content[:4000]) if content else ''  # iTunes要求description不超过4000字符
+        
+        item_xml = f'''    <item>
+      <title>{title}</title>
+      <description>{clean_content}</description>
+      <link>https://edurang.example.com/podcast/{script_id}</link>
+      <guid isPermaLink="true">{script_id}</guid>
+      <pubDate>{pub_date}</pubDate>
+      <enclosure url="{audio_url}" length="0" type="audio/mpeg"/>
+      <itunes:author>EduRAG AI</itunes:author>
+      <itunes:subtitle>{topic}</itunes:subtitle>
+      <itunes:summary>{clean_content}</itunes:summary>
+      <itunes:explicit>no</itunes:explicit>
+      <itunes:duration>{duration_str}</itunes:duration>
+      <itunes:episodeType>full</itunes:episodeType>
+    </item>
+'''
+        items_xml += item_xml
+    
+    # RSS尾部
+    rss_footer = '''  </channel>
+</rss>'''
+    
+    return rss_header + items_xml + rss_footer
+
+
+def _format_rfc2822_date(date_str):
+    """
+    将日期字符串转换为RFC 2822格式
+    
+    参数：
+    date_str: 日期字符串（ISO格式或时间戳）
+    
+    返回：
+    str: RFC 2822格式的日期字符串
+    """
+    from datetime import datetime
+    import email.utils
+    
+    try:
+        if date_str:
+            # 尝试解析ISO格式日期
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+        else:
+            dt = datetime.now()
+        
+        # 转换为RFC 2822格式
+        return email.utils.format_datetime(dt)
+    except:
+        # 失败时返回当前时间
+        return email.utils.format_datetime(datetime.now())

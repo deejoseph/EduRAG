@@ -161,6 +161,19 @@ export const writingApi = {
       data || {}
     ),
 
+  // 生成播客文案的RSS Feed
+  generatePodcastRSS: (params?: { script_ids?: string[]; topic?: string; limit?: number }) => {
+    const queryParams: Record<string, any> = {};
+    if (params?.script_ids) queryParams.script_ids = params.script_ids.join(',');
+    if (params?.topic) queryParams.topic = params.topic;
+    if (params?.limit) queryParams.limit = params.limit;
+    
+    return apiClient.get<any, { success: boolean; rss_xml: string; download_url: string; count: number }>(
+      '/writing/podcast-scripts/rss',
+      { params: queryParams }
+    );
+  },
+
   generatePodcastScript: (params: GeneratePodcastRequest) =>
     apiClient.post<any, { success: boolean; script: string; ai_model: string; materials_count: number; script_metadata?: any }>('/writing/podcast-generate', params),
 
