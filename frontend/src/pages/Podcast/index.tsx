@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, Table, Tag, Button, Space, Typography, Empty, Modal, message, Badge, Input, Select, Upload, Progress, Divider, Tabs, List, Alert } from 'antd';
-import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined, CopyOutlined, EditOutlined, SaveOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { SoundOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined, StarOutlined, PlayCircleOutlined, PauseCircleOutlined, CloudUploadOutlined, CopyOutlined, EditOutlined, SaveOutlined, DatabaseOutlined, StopOutlined } from '@ant-design/icons';
 import { writingApi } from '../../api/writing';
 import type { PodcastMaterial, PodcastScript } from '../../api/writing';
 
@@ -43,6 +43,19 @@ const PodcastPage: React.FC = () => {
   const [fullAudioUrl, setFullAudioUrl] = useState<string | null>(null); // 完整合并音频的URL
   const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);
   const [audioPlayer, setAudioPlayer] = useState<HTMLAudioElement | null>(null);
+  
+  // TTS生成中止控制
+  const [ttsAbortController, setTtsAbortController] = useState<AbortController | null>(null);
+  
+  // 中止TTS生成
+  const handleAbortTTS = () => {
+    if (ttsAbortController) {
+      ttsAbortController.abort();
+      setTtsAbortController(null);
+      setTtsGenerating(false);
+      message.info('已中止语音生成');
+    }
+  };
   
   // 文案列表管理（从数据库加载）
   const [activeTab, setActiveTab] = useState<'materials' | 'scripts'>('materials');
@@ -748,35 +761,22 @@ const PodcastPage: React.FC = () => {
       console.log(`[进度] 第 ${index + 1} 段: ${steps[stepIndex]} (${progressStep * 10}秒)`);
     }, 10000); // 每10秒输出一次日志
     
-    // 设置超时保护（6分钟）
-    const timeoutId = setTimeout(() => {
-      console.error(`第 ${index + 1} 段语音生成超时！`);
-      clearInterval(progressInterval);
-      progressMessage();
-      setAudioSegments(prevSegments => {
-        const updatedSegments = [...prevSegments];
-        updatedSegments[index] = { ...prevSegments[index], status: 'failed' };
-        return updatedSegments;
-      });
-      message.error(`第 ${index + 1} 段语音生成超时，请重试`);
-      if (!isBatchMode) {
-        setTtsGenerating(false);
-      }
-    }, 360000);
+    // 创建 AbortController 用于中止请求
+    const abortController = new AbortController();
+    setTtsAbortController(abortController);
     
     try {
       console.log('开始调用TTS API...');
-      // 直接调用API
+      // 直接调用API，传入signal支持中止
       const response = await writingApi.generatePodcastTTS({
         text: audioSegments[index].text,  // 从当前状态获取文本
         ref_audio_id: savedRefAudioId,  // 使用已保存的音频ID
         prompt_text: finalPromptText,  // 使用最终确定的提示文本
         nfe,
         guidance_strength: guidanceStrength,
-      });
+      }, abortController.signal);
       
-      // 清除超时保护
-      clearTimeout(timeoutId);
+      // 清除进度更新
       clearInterval(progressInterval);
       progressMessage();
       
@@ -812,10 +812,20 @@ const PodcastPage: React.FC = () => {
         setTtsGenerating(false);
       }
     } catch (error: any) {
-      // 清除超时保护
-      clearTimeout(timeoutId);
+      // 清除进度更新
       clearInterval(progressInterval);
       progressMessage();
+      
+      // 如果是中止错误，不显示错误消息
+      if (error.name === 'AbortError') {
+        console.log('用户中生了TTS生成');
+        setAudioSegments(prevSegments => {
+          const updatedSegments = [...prevSegments];
+          updatedSegments[index] = { ...prevSegments[index], status: 'pending' }; // 恢复为待生成状态
+          return updatedSegments;
+        });
+        return;
+      }
       
       console.error('生成语音失败:', error);
       console.error('错误详情:', error.response || error.message);
@@ -1784,13 +1794,23 @@ const PodcastPage: React.FC = () => {
           }}>
             关闭
           </Button>,
+          ttsGenerating && (
+            <Button
+              key="abort"
+              danger
+              icon={<StopOutlined />}
+              onClick={handleAbortTTS}
+            >
+              中止生成
+            </Button>
+          ),
           <Button
             key="generate-all"
             type="primary"
             icon={<CloudUploadOutlined />}
             onClick={handleGenerateAllAudio}
             loading={ttsGenerating}
-            disabled={!savedRefAudioId || audioSegments.length === 0}
+            disabled={!savedRefAudioId || audioSegments.length === 0 || ttsGenerating}
           >
             {ttsGenerating ? '生成中...' : '批量生成所有段落'}
           </Button>,

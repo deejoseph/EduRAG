@@ -227,7 +227,7 @@ export const writingApi = {
     apiClient.post<any, DuplicateScriptResponse>(`/writing/podcast-scripts/${scriptId}/duplicate`),
 
   // TTS语音生成接口（使用fetch避免axios问题）
-  generatePodcastTTS: (params: GeneratePodcastTTSRequest | { text: string; ref_audio_id: string; prompt_text: string; nfe?: number; guidance_strength?: number }) => {
+  generatePodcastTTS: (params: GeneratePodcastTTSRequest | { text: string; ref_audio_id: string; prompt_text: string; nfe?: number; guidance_strength?: number }, signal?: AbortSignal) => {
     const formData = new FormData();
     formData.append('text', params.text);
     
@@ -252,6 +252,7 @@ export const writingApi = {
     return fetch(ttsUrl, {
       method: 'POST',
       body: formData,
+      signal, // 传入AbortSignal支持中止
       // 不要设置Content-Type，让浏览器自动设置boundary
     })
     .then(async response => {
