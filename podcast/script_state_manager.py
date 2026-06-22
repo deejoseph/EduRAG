@@ -63,6 +63,38 @@ class PodcastScriptStateManager:
         logger.info(f"✅ 文案状态已更新: {script_id} -> {status}")
         return True
     
+    def update_script_stage(self, script_id: str, stage: str) -> bool:
+        """
+        更新文案所属阶段
+        
+        Args:
+            script_id: 文案ID
+            stage: 阶段 (shenti/gousi/xiezuo/pinggu)
+            
+        Returns:
+            bool: 是否成功
+        """
+        valid_stages = ['shenti', 'gousi', 'xiezuo', 'pinggu']
+        if stage not in valid_stages:
+            logger.warning(f"⚠️ 无效的阶段值: {stage}，必须是 {valid_stages} 之一")
+            return False
+        
+        if script_id not in self.state_data["scripts"]:
+            self.state_data["scripts"][script_id] = {}
+        
+        self.state_data["scripts"][script_id]["stage"] = stage
+        self.state_data["scripts"][script_id]["updated_at"] = datetime.now().isoformat()
+        self._save()
+        
+        logger.info(f"✅ 文案阶段已更新: {script_id} -> {stage}")
+        return True
+    
+    def get_script_stage(self, script_id: str) -> Optional[str]:
+        """获取文案所属阶段"""
+        if script_id in self.state_data["scripts"]:
+            return self.state_data["scripts"][script_id].get("stage")
+        return None
+    
     def get_script_status(self, script_id: str) -> Optional[str]:
         """获取文案状态"""
         if script_id in self.state_data["scripts"]:
@@ -116,6 +148,24 @@ class PodcastScriptStateManager:
     def get_all_states(self) -> Dict:
         """获取所有文案的状态"""
         return self.state_data["scripts"]
+    
+    def get_scripts_by_stage(self, stage: str, status_filter: Optional[str] = None) -> List[str]:
+        """
+        获取指定阶段的文案ID列表
+        
+        Args:
+            stage: 阶段 (shenti/gousi/xiezuo/pinggu)
+            status_filter: 状态过滤 (可选，如 'completed')
+            
+        Returns:
+            List[str]: 文案ID列表
+        """
+        result = []
+        for script_id, state in self.state_data["scripts"].items():
+            if state.get("stage") == stage:
+                if status_filter is None or state.get("status") == status_filter:
+                    result.append(script_id)
+        return result
 
 
 # 全局单例

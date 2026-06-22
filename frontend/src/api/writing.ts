@@ -181,6 +181,13 @@ export const writingApi = {
       { status }
     ),
 
+  // 更新播客文案阶段
+  updatePodcastScriptStage: (scriptId: string, stage: 'shenti' | 'gousi' | 'xiezuo' | 'pinggu') =>
+    apiClient.put<any, { success: boolean; message: string; new_stage: string; script_id: string }>(
+      `/writing/podcast-scripts/${scriptId}/stage`,
+      { stage }
+    ),
+
   // 音频关联管理接口
   addAudioAssociation: (scriptId: string, audioId: string) =>
     apiClient.post<any, { success: boolean; message: string; script_id: string; audio_id: string }>(

@@ -648,6 +648,7 @@ def get_podcast_scripts():
     查询参数：
     - topic: 主题过滤（可选）
     - status: 状态过滤（draft/completed/archived）
+    - stage: 阶段过滤（shenti/gousi/xiezuo/pinggu）
     - limit: 返回数量限制（默认50）
     
     响应体：
@@ -660,6 +661,7 @@ def get_podcast_scripts():
                 "topic": "主题",
                 "version": 1,
                 "status": "draft",
+                "stage": "shenti",
                 "created_at": "2024-01-01 12:00:00",
                 "materials_count": 3
             }
@@ -679,6 +681,7 @@ def get_podcast_scripts():
         # 获取查询参数
         topic = request.args.get('topic')
         status_filter = request.args.get('status')  # 前端传入的status过滤
+        stage_filter = request.args.get('stage')  # 前端传入的stage过滤
         limit = int(request.args.get('limit', 50))
         
         # 构建where条件（不再使用status过滤，因为要从JSON文件读取）
@@ -702,20 +705,25 @@ def get_podcast_scripts():
             include=['metadatas']
         )
         
-        # 从状态管理器获取所有文案的最新状态
+        # 从状态管理器获取所有文案的最新状态和阶段
         state_mgr = get_script_state_manager()
         all_states = state_mgr.get_all_states()
         
-        # 提取元数据并按时间排序，同时更新状态
+        # 提取元数据并按时间排序，同时更新状态和阶段
         scripts = []
         for metadata in results['metadatas']:
             script_id = metadata.get('script_id')
             
-            # 从 JSON 文件中获取最新状态，如果没有则使用 ChromaDB 中的默认值
+            # 从 JSON 文件中获取最新状态和阶段，如果没有则使用 ChromaDB 中的默认值
             latest_status = all_states.get(script_id, {}).get('status', metadata.get('status', 'draft'))
+            latest_stage = all_states.get(script_id, {}).get('stage', None)
             
             # 如果前端传入了status过滤，在这里进行过滤
             if status_filter and latest_status != status_filter:
+                continue
+            
+            # 如果前端传入了stage过滤，在这里进行过滤
+            if stage_filter and latest_stage != stage_filter:
                 continue
             
             scripts.append({
@@ -725,6 +733,7 @@ def get_podcast_scripts():
                 'version': metadata.get('version', 1),
                 'parent_id': metadata.get('parent_id'),
                 'status': latest_status,  # 使用最新状态
+                'stage': latest_stage,  # 添加阶段字段
                 'created_at': metadata.get('created_at'),
                 'updated_at': metadata.get('updated_at'),
                 'materials_count': metadata.get('materials_count', 0),
@@ -2073,6 +2082,56 @@ def update_podcast_script_status(script_id: str):
     
     except Exception as e:
         logger.error(f"更新文案状态失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/<script_id>/stage', methods=['PUT'])
+def update_podcast_script_stage(script_id: str):
+    """
+    更新播客文案所属阶段
+    
+    路径参数：
+    - script_id: 文案ID
+    
+    请求体：
+    {
+        "stage": "shenti"  // shenti/gousi/xiezuo/pinggu
+    }
+    
+    响应体：
+    {
+        "success": true,
+        "message": "阶段已更新",
+        "new_stage": "shenti"
+    }
+    """
+    try:
+        from podcast.script_state_manager import get_script_state_manager
+        
+        # 获取新阶段
+        data = request.get_json()
+        new_stage = data.get('stage')
+        
+        if new_stage not in ['shenti', 'gousi', 'xiezuo', 'pinggu']:
+            return error_response(f"无效的阶段值: {new_stage}，必须是 shenti/gousi/xiezuo/pinggu 之一", 400)
+        
+        # 使用JSON文件管理阶段
+        state_mgr = get_script_state_manager()
+        success = state_mgr.update_script_stage(script_id, new_stage)
+        
+        if not success:
+            return error_response("更新阶段失败", 500)
+        
+        logger.info(f"✅ 播客文案阶段已更新: {script_id} -> {new_stage}")
+        
+        return success_response({
+            'message': '阶段已更新',
+            'new_stage': new_stage,
+            'script_id': script_id
+        })
+    
+    except Exception as e:
+        logger.error(f"更新文案阶段失败: {e}", exc_info=True)
         return error_response(f"服务端错误: {e}", 500)
 
 
