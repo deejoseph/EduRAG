@@ -1779,10 +1779,15 @@ def generate_podcast_rss_feed():
         topic = request.args.get('topic')
         limit = int(request.args.get('limit', 50))
         
-        # 构建where条件
-        where_filter = {'type': 'podcast_script', 'status': 'completed'}
+        # 构建where条件（ChromaDB要求使用$and操作符组合多个条件）
+        where_conditions = [
+            {'type': 'podcast_script'},
+            {'status': 'completed'}
+        ]
         if topic:
-            where_filter['topic'] = topic
+            where_conditions.append({'topic': topic})
+        
+        where_filter = {'$and': where_conditions}
         
         # 检查集合是否存在
         if not db.collection_exists('podcast_scripts'):
