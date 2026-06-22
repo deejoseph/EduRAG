@@ -6,11 +6,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Card, Tabs, Input, Button, Space, Typography, List, Tag, message, Empty, Spin, 
-  Modal, Form, Select, Divider, Badge, Statistic, Row, Col, Popconfirm
+  Modal, Form, Select, Divider, Statistic, Row, Col, Popconfirm
 } from 'antd';
 import { 
   SearchOutlined, BookOutlined, LightbulbOutlined, StarOutlined, ExportOutlined,
-  EditOutlined, DeleteOutlined, SaveOutlined, CheckCircleOutlined, CloudUploadOutlined
+  EditOutlined, DeleteOutlined, CheckCircleOutlined, CloudUploadOutlined
 } from '@ant-design/icons';
 import { writingApi } from '../../api/writing';
 
