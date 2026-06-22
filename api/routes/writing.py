@@ -669,6 +669,7 @@ def get_podcast_scripts():
     """
     try:
         from flask import current_app
+        from podcast.script_state_manager import get_script_state_manager
         app_config = current_app.config.get('edurag', {})
         db = app_config.get('db')
         
@@ -677,15 +678,13 @@ def get_podcast_scripts():
         
         # 获取查询参数
         topic = request.args.get('topic')
-        status = request.args.get('status')
+        status_filter = request.args.get('status')  # 前端传入的status过滤
         limit = int(request.args.get('limit', 50))
         
-        # 构建where条件
+        # 构建where条件（不再使用status过滤，因为要从JSON文件读取）
         where_filter = {'type': 'podcast_script'}
         if topic:
             where_filter['topic'] = topic
-        if status:
-            where_filter['status'] = status
         
         # 查询所有符合条件的文案
         # 检查集合是否存在
@@ -703,16 +702,29 @@ def get_podcast_scripts():
             include=['metadatas']
         )
         
-        # 提取元数据并按时间排序
+        # 从状态管理器获取所有文案的最新状态
+        state_mgr = get_script_state_manager()
+        all_states = state_mgr.get_all_states()
+        
+        # 提取元数据并按时间排序，同时更新状态
         scripts = []
         for metadata in results['metadatas']:
+            script_id = metadata.get('script_id')
+            
+            # 从 JSON 文件中获取最新状态，如果没有则使用 ChromaDB 中的默认值
+            latest_status = all_states.get(script_id, {}).get('status', metadata.get('status', 'draft'))
+            
+            # 如果前端传入了status过滤，在这里进行过滤
+            if status_filter and latest_status != status_filter:
+                continue
+            
             scripts.append({
-                'script_id': metadata.get('script_id'),
+                'script_id': script_id,
                 'title': metadata.get('title', '未命名'),
                 'topic': metadata.get('topic', '未知'),
                 'version': metadata.get('version', 1),
                 'parent_id': metadata.get('parent_id'),
-                'status': metadata.get('status', 'draft'),
+                'status': latest_status,  # 使用最新状态
                 'created_at': metadata.get('created_at'),
                 'updated_at': metadata.get('updated_at'),
                 'materials_count': metadata.get('materials_count', 0),
@@ -1845,15 +1857,17 @@ def generate_podcast_rss_feed():
         import time
         token = hashlib.md5(f"{time.time()}_{len(rss_xml)}".encode()).hexdigest()
         
-        # 缓存RSS内容（5分钟过期）
+        # 缓存RSS内容（5分钟过期）- Redis可选
         cache_key = f"rss_cache_{token}"
-        import redis
         try:
+            import redis
             r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
             r.setex(cache_key, 300, rss_xml)  # 5分钟过期
-        except:
-            # Redis不可用时，将RSS内容存储在内存中
-            logger.warning("Redis不可用，RSS内容将无法缓存")
+        except ImportError:
+            # Redis未安装，跳过缓存
+            logger.debug("Redis未安装，RSS内容将不进行缓存")
+        except Exception as e:
+            logger.warning(f"Redis不可用: {e}，RSS内容将不进行缓存")
         
         logger.info(f"✅ RSS Feed已生成，包含 {len(results_list)} 个文案")
         
