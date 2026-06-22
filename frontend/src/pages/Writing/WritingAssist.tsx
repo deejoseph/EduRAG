@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Input, Button, Space, Row, Col, Typography, message, Alert, Card, Modal, Tabs, Radio } from 'antd';
+import { Input, Button, Space, Row, Col, Typography, message, Alert, Card, Radio } from 'antd';
 import {
   EditOutlined,
   PlayCircleOutlined,
@@ -17,7 +17,6 @@ import LoadingOverlay from '../../components/common/LoadingOverlay';
 import MultiAiResults from '../../components/writing/MultiAiResults';
 
 const { Text, Paragraph } = Typography;
-const { TabPane } = Tabs;
 
 const helpButtons = [
   { type: 'polish' as HelpType, label: '润色优化', icon: <EditOutlined /> },
@@ -36,7 +35,6 @@ const WritingAssist: React.FC = () => {
   const [selectedHelp, setSelectedHelp] = useState<HelpType>('polish');
   
   // 生成范文相关状态
-  const [generateModalVisible, setGenerateModalVisible] = useState(false);
   const [outline, setOutline] = useState('');
   const [generatedEssay, setGeneratedEssay] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -59,7 +57,7 @@ const WritingAssist: React.FC = () => {
 
   const handleAssist = async (helpType: HelpType) => {
     if (!currentEssay.trim()) {
-      message.warning('请先在左侧输入一些作文内容');
+      message.warning('请先输入一些作文内容');
       return;
     }
     setSelectedHelp(helpType);
@@ -134,13 +132,13 @@ const WritingAssist: React.FC = () => {
   // 多AI并行生成播客素材
   const handleMultiAiGenerate = async () => {
     if (!currentEssay.trim()) {
-      message.warning('请先在左侧输入一些作文内容');
+      message.warning('请先在上方编辑区输入作文内容');
       return;
     }
     setMultiAiLoading(true);
     try {
       const res = await writingApi.multiAiAnalyze({
-        topic: currentEssay.trim().slice(0, 100),
+        topic: currentEssay.trim(),
         grade_level: '高三',
         topic_type: '材料作文',
         models: ['qwen3:8b', 'gemma3:4b'],
@@ -160,72 +158,6 @@ const WritingAssist: React.FC = () => {
   };
 
   const charCount = currentEssay.length;
-
-  // 生成范文弹窗组件
-  const renderGenerateModal = () => (
-    <Modal
-      title="📝 基于提纲生成范文"
-      open={generateModalVisible}
-      onCancel={() => {
-        setGenerateModalVisible(false);
-        setGeneratedEssay(null);
-      }}
-      footer={null}
-      width={800}
-    >
-      <Tabs defaultActiveKey="input">
-        <TabPane tab="输入提纲" key="input">
-          <Paragraph type="secondary">
-            请输入你的构思提纲，AI将基于此生成一篇完整的范文供你参考。
-          </Paragraph>
-          
-          <Input.TextArea
-            value={outline}
-            onChange={(e) => setOutline(e.target.value)}
-            placeholder={`例如：\n一、引论：从现象入手，引出中心论点\n二、本论：\n  1. 分论点1 + 论据\n  2. 分论点2 + 论据\n  3. 分论点3 + 论据\n三、结论：总结全文，升华主题`}
-            rows={12}
-            style={{ marginBottom: 16, fontSize: 14, lineHeight: 1.8 }}
-          />
-          
-          <Button
-            type="primary"
-            icon={<FileTextOutlined />}
-            onClick={handleGenerateEssay}
-            loading={generating}
-            block
-            size="large"
-          >
-            {generating ? '正在生成范文...' : '生成范文'}
-          </Button>
-        </TabPane>
-        
-        <TabPane tab="查看范文" key="output" disabled={!generatedEssay}>
-          {generatedEssay && (
-            <div>
-              <div style={{ maxHeight: 600, overflowY: 'auto', overflowX: 'hidden', marginBottom: 16, padding: 12, border: '1px solid #f0f0f0', borderRadius: 4, backgroundColor: '#fafafa' }}>
-                <Paragraph style={{ whiteSpace: 'pre-wrap', lineHeight: 2, fontSize: 15, margin: 0 }}>
-                  {generatedEssay}
-                </Paragraph>
-              </div>
-              
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <Button
-                  icon={<SoundOutlined />}
-                  onClick={handleExportToPodcast}
-                  block
-                >
-                  导出到播客模块
-                </Button>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  💡 提示：导出的范文可以在播客模块转换为语音，方便反复听读复习
-                </Text>
-              </Space>
-            </div>
-          )}
-        </TabPane>
-      </Tabs>
-    </Modal>
-  );
 
   return (
     <LoadingOverlay loading={loading}>
@@ -254,13 +186,48 @@ const WritingAssist: React.FC = () => {
         </Space>
       </Card>
 
-      {multiAiMode ? (
-        <>
-          {/* 播客素材模式 */}
-          <Card style={{ marginBottom: 16 }}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Text strong>🎙️ 播客素材模式</Text>
-              <Text type="secondary">将当前作文内容发送给多个AI，并行生成播客素材文案</Text>
+      {/* 作文编辑区 - 两种模式共用 */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col xs={24} lg={12}>
+          <Card title="作文编辑" extra={<Text type="secondary">{charCount} 字</Text>} size="small">
+            <Input.TextArea
+              value={currentEssay}
+              onChange={(e) => setCurrentEssay(e.target.value)}
+              placeholder="在此输入你的作文内容..."
+              rows={14}
+              className="essay-editor"
+              style={{ resize: 'vertical' }}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} lg={12}>
+          {/* 普通模式：写作辅助 */}
+          {!multiAiMode && (
+            <Card title="写作辅助" size="small">
+              <Space wrap style={{ marginBottom: 16 }}>
+                {helpButtons.map((btn) => (
+                  <Button
+                    key={btn.type}
+                    icon={btn.icon}
+                    type={selectedHelp === btn.type ? 'primary' : 'default'}
+                    onClick={() => handleAssist(btn.type)}
+                    disabled={loading}
+                  >
+                    {btn.label}
+                  </Button>
+                ))}
+              </Space>
+              <AnswerDisplay content={assistResult} title="辅助建议" />
+            </Card>
+          )}
+
+          {/* 播客模式：播客素材生成 */}
+          {multiAiMode && (
+            <Card title="🎙️ 播客素材生成" size="small">
+              <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                将当前作文内容发送给多个AI，并行生成播客素材文案
+              </Text>
               <Button
                 type="primary"
                 icon={<SoundOutlined />}
@@ -272,82 +239,81 @@ const WritingAssist: React.FC = () => {
               >
                 一键生成播客素材（多AI并行）
               </Button>
-            </Space>
-          </Card>
-
-          {/* 多AI结果展示 */}
-          {multiAiResults.length > 0 && (
-            <MultiAiResults
-              results={multiAiResults}
-              stage="essay"
-              topic={topic}
-              loading={multiAiLoading}
-              onRegenerate={handleMultiAiGenerate}
-            />
+            </Card>
           )}
+        </Col>
+      </Row>
 
-          {/* 生成范文弹窗（播客模式下也可用） */}
-          <Card style={{ marginBottom: 16 }}>
-            <Space>
-              <FileTextOutlined />
-              <Text>也可以基于提纲生成范文：</Text>
-              <Button icon={<FileTextOutlined />} onClick={() => setGenerateModalVisible(true)}>
-                生成范文
-              </Button>
-            </Space>
-          </Card>
-          {renderGenerateModal()}
-        </>
-      ) : (
-        <>
-          {/* 普通模式 - 原有的左右分栏布局 */}
-          <Row gutter={16}>
-            <Col xs={24} lg={12}>
-              <Card title="作文编辑" extra={<Text type="secondary">{charCount} 字</Text>} size="small">
-                <Input.TextArea
-                  value={currentEssay}
-                  onChange={(e) => setCurrentEssay(e.target.value)}
-                  placeholder="在此输入你的作文内容..."
-                  rows={18}
-                  className="essay-editor"
-                  style={{ resize: 'vertical' }}
-                />
-              </Card>
-            </Col>
-
-            <Col xs={24} lg={12}>
-              <Card title="写作辅助" size="small">
-                <Space wrap style={{ marginBottom: 16 }}>
-                  {helpButtons.map((btn) => (
-                    <Button
-                      key={btn.type}
-                      icon={btn.icon}
-                      type={selectedHelp === btn.type ? 'primary' : 'default'}
-                      onClick={() => handleAssist(btn.type)}
-                      disabled={loading}
-                    >
-                      {btn.label}
-                    </Button>
-                  ))}
-                  
-                  {/* 生成范文按钮 */}
-                  <Button
-                    icon={<FileTextOutlined />}
-                    onClick={() => setGenerateModalVisible(true)}
-                  >
-                    生成范文
-                  </Button>
-                </Space>
-
-                <AnswerDisplay content={assistResult} title="辅助建议" />
-              </Card>
-            </Col>
-          </Row>
-
-          {/* 生成范文弹窗 */}
-          {renderGenerateModal()}
-        </>
+      {/* 多AI结果展示 */}
+      {multiAiMode && multiAiResults.length > 0 && (
+        <MultiAiResults
+          results={multiAiResults}
+          stage="essay"
+          topic={topic}
+          loading={multiAiLoading}
+          onRegenerate={handleMultiAiGenerate}
+        />
       )}
+
+      {/* 生成范文区域 - 两种模式共用 */}
+      <Card 
+        title="📝 基于提纲生成范文" 
+        size="small" 
+        style={{ marginTop: 16 }}
+      >
+        <Row gutter={16}>
+          <Col xs={24} md={12}>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>输入提纲：</Text>
+            <Input.TextArea
+              value={outline}
+              onChange={(e) => setOutline(e.target.value)}
+              placeholder={`例如：\n一、引论：从现象入手，引出中心论点\n二、本论：\n  分论点1 + 论据\n  分论点2 + 论据\n  分论点3 + 论据\n三、结论：总结全文，升华主题`}
+              rows={10}
+              style={{ fontSize: 14, lineHeight: 1.8 }}
+            />
+            <Button
+              type="primary"
+              icon={<FileTextOutlined />}
+              onClick={handleGenerateEssay}
+              loading={generating}
+              block
+              size="large"
+              style={{ marginTop: 12 }}
+            >
+              {generating ? '正在生成范文...' : '生成范文'}
+            </Button>
+          </Col>
+
+          <Col xs={24} md={12}>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>生成的范文：</Text>
+            {generatedEssay ? (
+              <div>
+                <div style={{ maxHeight: 400, overflowY: 'auto', overflowX: 'hidden', padding: 12, border: '1px solid #f0f0f0', borderRadius: 4, backgroundColor: '#fafafa' }}>
+                  <Paragraph style={{ whiteSpace: 'pre-wrap', lineHeight: 2, fontSize: 15, margin: 0 }}>
+                    {generatedEssay}
+                  </Paragraph>
+                </div>
+                <Button
+                  icon={<SoundOutlined />}
+                  onClick={handleExportToPodcast}
+                  block
+                  style={{ marginTop: 12 }}
+                >
+                  导出到播客模块
+                </Button>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
+                  💡 导出的范文可以在播客模块转换为语音，方便反复听读复习
+                </Text>
+              </div>
+            ) : (
+              <div style={{ padding: 40, textAlign: 'center', color: '#999', border: '1px dashed #d9d9d9', borderRadius: 4 }}>
+                <FileTextOutlined style={{ fontSize: 32, marginBottom: 8 }} />
+                <div>输入提纲后点击"生成范文"</div>
+              </div>
+            )}
+          </Col>
+        </Row>
+      </Card>
     </LoadingOverlay>
   );
 };
