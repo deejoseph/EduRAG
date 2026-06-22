@@ -25,8 +25,29 @@ from core.db_manager import EduRAGDatabase
 
 
 class PodcastDeployer:
-    def __init__(self):
-        self.output_dir = project_root / "podcast-output"
+    def __init__(self, pages_repo_path=None):
+        """
+        初始化部署器
+        
+        参数：
+        pages_repo_path: GitHub Pages仓库的路径（可选）
+                        如果提供，将直接推送到该仓库
+                        否则推送到当前仓库的podcast-output目录
+        """
+        self.project_root = project_root
+        
+        if pages_repo_path:
+            # 使用外部GitHub Pages仓库
+            self.pages_root = Path(pages_repo_path)
+            if not self.pages_root.exists():
+                raise FileNotFoundError(f"GitHub Pages仓库路径不存在: {pages_repo_path}")
+            print(f"✅ 使用外部GitHub Pages仓库: {self.pages_root}")
+        else:
+            # 使用当前仓库的podcast-output目录
+            self.pages_root = project_root / "podcast-output"
+            print("ℹ️  使用当前仓库的podcast-output目录")
+        
+        self.output_dir = self.pages_root
         self.audio_dir = self.output_dir / "audio"
         self.rss_file = self.output_dir / "feed.xml"
         
@@ -98,7 +119,7 @@ class PodcastDeployer:
             
             # 构建音频URL（GitHub Pages URL）
             script_id = metadata.get('script_id', '')
-            audio_url = f"https://deejoseph.github.io/EduRAG/audio/{script_id}.mp3"
+            audio_url = f"https://dee422.github.io/audio/{script_id}.mp3"
             
             # 替换metadata中的音频URL
             metadata_copy = metadata.copy()
@@ -116,17 +137,25 @@ class PodcastDeployer:
         print(f"✅ RSS Feed已生成: {self.rss_file}")
         return True
     
-    def commit_and_push(self):
+    def commit_and_push(self, pages_repo_path=None):
         """提交并推送到GitHub"""
         print("🚀 提交并推送到GitHub...")
         
         try:
+            # 确定Git仓库路径
+            if pages_repo_path:
+                git_repo_path = Path(pages_repo_path)
+                print(f"✅ 推送到外部仓库: {git_repo_path}")
+            else:
+                git_repo_path = self.project_root
+                print(f"ℹ️  推送到当前仓库")
+            
             # 检查是否有更改
             result = subprocess.run(
-                ['git', 'status', '--porcelain', 'podcast-output/'],
+                ['git', 'status', '--porcelain'],
                 capture_output=True,
                 text=True,
-                cwd=project_root
+                cwd=git_repo_path
             )
             
             if not result.stdout.strip():
@@ -135,9 +164,9 @@ class PodcastDeployer:
             
             # 添加文件
             subprocess.run(
-                ['git', 'add', 'podcast-output/'],
+                ['git', 'add', '.'],
                 check=True,
-                cwd=project_root
+                cwd=git_repo_path
             )
             
             # 提交
@@ -146,14 +175,14 @@ class PodcastDeployer:
             subprocess.run(
                 ['git', 'commit', '-m', commit_msg],
                 check=True,
-                cwd=project_root
+                cwd=git_repo_path
             )
             
             # 推送
             subprocess.run(
                 ['git', 'push', 'origin', 'main'],
                 check=True,
-                cwd=project_root
+                cwd=git_repo_path
             )
             
             print("✅ 成功推送到GitHub")
@@ -164,7 +193,7 @@ class PodcastDeployer:
             print(f"❌ Git操作失败: {e}")
             return False
     
-    def deploy(self, skip_audio=False):
+    def deploy(self, skip_audio=False, pages_repo_path=None):
         """执行完整部署流程"""
         print("=" * 60)
         print("🎙️ 播客自动化部署开始")
@@ -192,18 +221,18 @@ class PodcastDeployer:
         
         # 4. 提交并推送
         print("\n📤 步骤3: 提交到GitHub")
-        success = self.commit_and_push()
+        success = self.commit_and_push(pages_repo_path=pages_repo_path)
         
         if success:
             print("\n" + "=" * 60)
             print("✅ 部署完成！")
             print("=" * 60)
-            print(f"\n📡 RSS Feed URL: https://deejoseph.github.io/EduRAG/feed.xml")
-            print(f"🎧 音频文件目录: https://deejoseph.github.io/EduRAG/audio/")
+            print(f"\n📡 RSS Feed URL: https://dee422.github.io/feed.xml")
+            print(f"🎧 音频文件目录: https://dee422.github.io/audio/")
             print("\n💡 提示:")
             print("   1. 等待1-2分钟让GitHub Pages部署完成")
             print("   2. 访问上述URL验证文件是否正确部署")
-            print("   3. 在小宇宙等平台提交RSS URL: https://deejoseph.github.io/EduRAG/feed.xml")
+            print("   3. 在小宇宙等平台提交RSS URL: https://dee422.github.io/feed.xml")
         else:
             print("\n❌ 部署失败")
         
@@ -218,11 +247,13 @@ def main():
                        help='跳过音频生成（仅更新RSS）')
     parser.add_argument('--limit', type=int, default=50,
                        help='处理的文案数量限制（默认50）')
+    parser.add_argument('--pages-repo', type=str, default=None,
+                       help='GitHub Pages仓库的路径（可选，默认使用当前仓库的podcast-output目录）')
     
     args = parser.parse_args()
     
-    deployer = PodcastDeployer()
-    success = deployer.deploy(skip_audio=args.skip_audio)
+    deployer = PodcastDeployer(pages_repo_path=args.pages_repo)
+    success = deployer.deploy(skip_audio=args.skip_audio, pages_repo_path=args.pages_repo)
     
     sys.exit(0 if success else 1)
 
