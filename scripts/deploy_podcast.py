@@ -66,7 +66,12 @@ class PodcastDeployer:
         
         collection = self.db.get_collection('podcast_scripts')
         results = collection.get(
-            where={'type': 'podcast_script', 'status': 'completed'},
+            where={
+                '$and': [
+                    {'type': 'podcast_script'},
+                    {'status': 'completed'}
+                ]
+            },
             limit=limit,
             include=['metadatas', 'documents']
         )
