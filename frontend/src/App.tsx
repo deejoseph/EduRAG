@@ -12,6 +12,7 @@ import UploadPage from './pages/Upload';
 import PortfolioPage from './pages/Portfolio';
 import HotTopicsPage from './pages/HotTopics';
 import PodcastPage from './pages/Podcast';
+import QuotesAndMaterialsPage from './pages/QuotesAndMaterials';
 
 const App: React.FC = () => {
   return (
@@ -27,6 +28,7 @@ const App: React.FC = () => {
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/hot-topics" element={<HotTopicsPage />} />
         <Route path="/podcast" element={<PodcastPage />} />
+        <Route path="/quotes-materials" element={<QuotesAndMaterialsPage />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
     </AppLayout>
