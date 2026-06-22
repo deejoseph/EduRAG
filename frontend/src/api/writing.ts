@@ -308,4 +308,17 @@ export const writingApi = {
   
   deleteRefAudio: (filename: string) =>
     apiClient.delete<any, { success: boolean; message: string }>(`/writing/podcast-ref-audios/${filename}`),
+  
+  // 名句和素材检索接口
+  searchQuotes: (topic: string, top_k?: number) =>
+    apiClient.post<any, { success: boolean; quotes: Array<{id: string; content: string; author: string; source: string; score: number}>; count: number }>('/writing/search-quotes', {
+      topic,
+      top_k: top_k || 10
+    }),
+  
+  searchMaterials: (topic: string, top_k?: number) =>
+    apiClient.post<any, { success: boolean; materials: Array<{id: string; title: string; content: string; type: string; score: number}>; count: number }>('/writing/search-materials', {
+      topic,
+      top_k: top_k || 10
+    }),
 };
