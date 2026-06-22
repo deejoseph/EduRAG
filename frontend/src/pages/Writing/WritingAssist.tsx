@@ -218,8 +218,8 @@ const WritingAssist: React.FC = () => {
           <TabPane tab="查看范文" key="output" disabled={!generatedEssay}>
             {generatedEssay && (
               <div>
-                <div style={{ maxHeight: 500, overflow: 'auto', marginBottom: 16 }}>
-                  <Paragraph style={{ whiteSpace: 'pre-wrap', lineHeight: 2, fontSize: 15 }}>
+                <div style={{ maxHeight: 600, overflowY: 'auto', overflowX: 'hidden', marginBottom: 16, padding: 12, border: '1px solid #f0f0f0', borderRadius: 4, backgroundColor: '#fafafa' }}>
+                  <Paragraph style={{ whiteSpace: 'pre-wrap', lineHeight: 2, fontSize: 15, margin: 0 }}>
                     {generatedEssay}
                   </Paragraph>
                 </div>
