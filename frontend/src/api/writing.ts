@@ -181,6 +181,24 @@ export const writingApi = {
       { status }
     ),
 
+  // 音频关联管理接口
+  addAudioAssociation: (scriptId: string, audioId: string) =>
+    apiClient.post<any, { success: boolean; message: string; script_id: string; audio_id: string }>(
+      `/writing/podcast-scripts/${scriptId}/audio-association`,
+      { audio_id: audioId }
+    ),
+
+  removeAudioAssociation: (scriptId: string, audioId: string) =>
+    apiClient.delete<any, { success: boolean; message: string; script_id: string; audio_id: string }>(
+      `/writing/podcast-scripts/${scriptId}/audio-association`,
+      { data: { audio_id: audioId } }
+    ),
+
+  getScriptAudioFiles: (scriptId: string) =>
+    apiClient.get<any, { success: boolean; audio_files: Array<{ audio_id: string; filename: string; duration?: number; file_size?: number; created_at?: string }> }>(
+      `/writing/podcast-scripts/${scriptId}/audio-files`
+    ),
+
   generatePodcastScript: (params: GeneratePodcastRequest) =>
     apiClient.post<any, { success: boolean; script: string; ai_model: string; materials_count: number; script_metadata?: any }>('/writing/podcast-generate', params),
 

@@ -2074,3 +2074,123 @@ def update_podcast_script_status(script_id: str):
     except Exception as e:
         logger.error(f"更新文案状态失败: {e}", exc_info=True)
         return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/<script_id>/audio-association', methods=['POST'])
+def add_audio_association(script_id: str):
+    """
+    为播客文案添加音频关联
+    
+    请求体:
+    {
+        "audio_id": "音频文件ID"
+    }
+    """
+    try:
+        from podcast.script_state_manager import get_script_state_manager
+        
+        data = request.get_json()
+        audio_id = data.get('audio_id')
+        
+        if not audio_id:
+            return error_response("缺少audio_id参数", 400)
+        
+        state_mgr = get_script_state_manager()
+        state_mgr.add_audio_association(script_id, audio_id)
+        
+        return success_response({
+            'message': '音频关联已添加',
+            'script_id': script_id,
+            'audio_id': audio_id
+        })
+    
+    except Exception as e:
+        logger.error(f"添加音频关联失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/<script_id>/audio-association', methods=['DELETE'])
+def remove_audio_association(script_id: str):
+    """
+    移除播客文案的音频关联
+    
+    请求体:
+    {
+        "audio_id": "音频文件ID"
+    }
+    """
+    try:
+        from podcast.script_state_manager import get_script_state_manager
+        
+        data = request.get_json()
+        audio_id = data.get('audio_id')
+        
+        if not audio_id:
+            return error_response("缺少audio_id参数", 400)
+        
+        state_mgr = get_script_state_manager()
+        state_mgr.remove_audio_association(script_id, audio_id)
+        
+        return success_response({
+            'message': '音频关联已移除',
+            'script_id': script_id,
+            'audio_id': audio_id
+        })
+    
+    except Exception as e:
+        logger.error(f"移除音频关联失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-scripts/<script_id>/audio-files', methods=['GET'])
+def get_script_audio_files(script_id: str):
+    """
+    获取播客文案关联的音频文件列表
+    """
+    try:
+        from podcast.script_state_manager import get_script_state_manager
+        
+        state_mgr = get_script_state_manager()
+        audio_ids = state_mgr.get_script_audio_files(script_id)
+        
+        # 从数据库获取音频文件详细信息
+        app_config = current_app.config.get('edurag', {})
+        db = app_config.get('db')
+        
+        if not db or not db.collection_exists('podcast_ref_audios'):
+            return success_response({'audio_files': []})
+        
+        collection = db.get_collection('podcast_ref_audios')
+        
+        if not audio_ids:
+            return success_response({'audio_files': []})
+        elif len(audio_ids) == 1:
+            where_filter = {'$and': [{'type': 'ref_audio'}, {'audio_id': audio_ids[0]}]}
+        else:
+            where_filter = {
+                '$and': [
+                    {'type': 'ref_audio'},
+                    {'$or': [{'audio_id': aid} for aid in audio_ids]}
+                ]
+            }
+        
+        results = collection.get(
+            where=where_filter,
+            include=['metadatas']
+        )
+        
+        audio_files = []
+        for metadata in results['metadatas']:
+            audio_files.append({
+                'audio_id': metadata.get('audio_id'),
+                'filename': metadata.get('filename'),
+                'duration': metadata.get('duration'),
+                'file_size': metadata.get('file_size'),
+                'created_at': metadata.get('created_at')
+            })
+        
+        return success_response({'audio_files': audio_files})
+    
+    except Exception as e:
+        logger.error(f"获取音频文件列表失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)
