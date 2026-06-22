@@ -52,7 +52,19 @@ if !errorlevel! equ 0 (
         taskkill /F /PID %%a >nul 2>&1
     )
     timeout /t 2 /nobreak >nul
-    echo       旧进程已清理
+    echo       旧后端进程已清理
+)
+
+:: 检查并清理占用 3000 端口的旧前端进程
+echo [2.5/4] 检查前端端口...
+netstat -ano | findstr :3000 | findstr LISTENING >nul 2>&1
+if !errorlevel! equ 0 (
+    echo       检测到旧的前端进程，正在清理...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING') do (
+        taskkill /F /PID %%a >nul 2>&1
+    )
+    timeout /t 2 /nobreak >nul
+    echo       旧前端进程已清理
 )
 
 :: 使用 start_backend.py 启动（自动设置HF_ENDPOINT环境变量）
