@@ -2275,3 +2275,176 @@ def get_script_audio_files(script_id: str):
     except Exception as e:
         logger.error(f"获取音频文件列表失败: {e}", exc_info=True)
         return error_response(f"服务端错误: {e}", 500)
+
+
+# ─────────────────────────────────────────────────────────
+# POST /writing/search-quotes  名人名言检索
+# ─────────────────────────────────────────────────────────
+@writing_bp.route('/search-quotes', methods=['POST'])
+def search_quotes():
+    """
+    基于RAG知识库检索名人名言
+    
+    请求体：
+    {
+        "topic": "主题关键词（必填）",
+        "top_k": "返回数量（可选，默认10）"
+    }
+    
+    响应体：
+    {
+        "success": true,
+        "quotes": [
+            {
+                "content": "名言内容",
+                "author": "作者",
+                "source": "出处",
+                "metadata": {...}
+            }
+        ],
+        "count": 数量
+    }
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("请求体不能为空")
+    
+    topic = data.get('topic')
+    if not topic:
+        return error_response("必须提供 topic 字段")
+    
+    top_k = data.get('top_k', 10)
+    
+    try:
+        retriever = current_app.config['edurag']['retriever']
+        
+        # 构建查询：搜索包含“名言”、“警句”等关键词的内容
+        query = f"{topic} 名言 警句 格言"
+        
+        results = retriever.search(
+            collection_name='chinese_essays',
+            query=query,
+            top_k=top_k * 2,  # 多检索一些，后续过滤
+            score_threshold=0.1
+        )
+        
+        # 过滤和提取名言
+        quotes = []
+        for i, (doc, meta) in enumerate(zip(results.documents, results.metadatas)):
+            # 简单启发式：短文本更可能是名言
+            if len(doc) < 300 and any(keyword in doc for keyword in ['曰', '云', '说', '言', '谓']):
+                # 尝试提取作者信息
+                author = meta.get('author', '佚名')
+                source = meta.get('source', meta.get('source_file', '未知'))
+                
+                quotes.append({
+                    'id': f'quote_{i}',
+                    'content': doc.strip(),
+                    'author': author,
+                    'source': source,
+                    'score': round(results.scores[i], 3),
+                    'metadata': meta
+                })
+        
+        # 按相似度排序，取前top_k个
+        quotes.sort(key=lambda x: x['score'], reverse=True)
+        quotes = quotes[:top_k]
+        
+        logger.info(f"检索到 {len(quotes)} 条相关名言")
+        
+        return success_response({
+            'quotes': quotes,
+            'count': len(quotes)
+        })
+    
+    except Exception as e:
+        logger.error(f"名言检索失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+# ─────────────────────────────────────────────────────────
+# POST /writing/search-materials  真实案例检索
+# ─────────────────────────────────────────────────────────
+@writing_bp.route('/search-materials', methods=['POST'])
+def search_materials():
+    """
+    基于RAG知识库检索真实案例、历史事件
+    
+    请求体：
+    {
+        "topic": "主题关键词（必填）",
+        "top_k": "返回数量（可选，默认10）"
+    }
+    
+    响应体：
+    {
+        "success": true,
+        "materials": [
+            {
+                "title": "案例标题",
+                "content": "案例内容",
+                "type": "案例类型（历史事件/现实案例/人物故事）",
+                "metadata": {...}
+            }
+        ],
+        "count": 数量
+    }
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("请求体不能为空")
+    
+    topic = data.get('topic')
+    if not topic:
+        return error_response("必须提供 topic 字段")
+    
+    top_k = data.get('top_k', 10)
+    
+    try:
+        retriever = current_app.config['edurag']['retriever']
+        
+        # 构建查询：搜索包含“案例”、“事件”、“故事”等关键词的内容
+        query = f"{topic} 案例 事例 故事 历史 事件 实例"
+        
+        results = retriever.search(
+            collection_name='chinese_essays',
+            query=query,
+            top_k=top_k * 2,
+            score_threshold=0.1
+        )
+        
+        # 过滤和提取案例
+        materials = []
+        for i, (doc, meta) in enumerate(zip(results.documents, results.metadatas)):
+            # 中等长度的文本更适合作为案例
+            if 100 < len(doc) < 1000:
+                # 判断案例类型
+                case_type = "现实案例"
+                if any(kw in doc for kw in ['历史', '古代', '唐朝', '宋朝', '明朝', '清朝']):
+                    case_type = "历史事件"
+                elif any(kw in doc for kw in ['人物', '故事', '事迹']):
+                    case_type = "人物故事"
+                
+                materials.append({
+                    'id': f'material_{i}',
+                    'title': meta.get('topic', f'{topic}相关案例'),
+                    'content': doc.strip(),
+                    'type': case_type,
+                    'score': round(results.scores[i], 3),
+                    'metadata': meta
+                })
+        
+        # 按相似度排序，取前top_k个
+        materials.sort(key=lambda x: x['score'], reverse=True)
+        materials = materials[:top_k]
+        
+        logger.info(f"检索到 {len(materials)} 条相关案例")
+        
+        return success_response({
+            'materials': materials,
+            'count': len(materials)
+        })
+    
+    except Exception as e:
+        logger.error(f"案例检索失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
