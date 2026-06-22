@@ -56,6 +56,18 @@ const PodcastPage: React.FC = () => {
   const [stageFilter, setStageFilter] = useState<string | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   
+  // 文案列表选择和批量操作
+  const [selectedScriptIds, setSelectedScriptIds] = useState<string[]>([]);
+  
+  // 阶段编辑弹窗
+  const [stageModalVisible, setStageModalVisible] = useState(false);
+  const [currentEditScriptId, setCurrentEditScriptId] = useState<string | null>(null);
+  const [selectedStage, setSelectedStage] = useState<string | undefined>(undefined);
+  
+  // 音频关联弹窗
+  const [audioModalVisible, setAudioModalVisible] = useState(false);
+  const [selectedAudioIds, setSelectedAudioIds] = useState<string[]>([]);
+  
   // RSS相关状态
   const [rssModalVisible, setRssModalVisible] = useState(false);
   const [generatingRSS, setGeneratingRSS] = useState(false);
@@ -249,6 +261,77 @@ const PodcastPage: React.FC = () => {
       console.error('更新文案状态失败:', error);
       message.error('更新状态失败');
     }
+  };
+
+  // 打开阶段编辑弹窗
+  const handleOpenStageModal = (scriptId: string, currentStage?: string) => {
+    setCurrentEditScriptId(scriptId);
+    setSelectedStage(currentStage);
+    setStageModalVisible(true);
+  };
+
+  // 保存阶段设置
+  const handleSaveStage = async () => {
+    if (!currentEditScriptId || !selectedStage) {
+      message.warning('请选择一个阶段');
+      return;
+    }
+    
+    try {
+      await writingApi.updatePodcastScriptStage(currentEditScriptId, selectedStage as any);
+      message.success('阶段设置成功');
+      setStageModalVisible(false);
+      loadScripts(); // 刷新列表
+    } catch (error) {
+      console.error('更新阶段失败:', error);
+      message.error('更新阶段失败');
+    }
+  };
+
+  // 打开音频关联弹窗
+  const handleOpenAudioModal = (scriptId: string) => {
+    setCurrentEditScriptId(scriptId);
+    setSelectedAudioIds([]); // TODO: 加载已关联的音频ID
+    setAudioModalVisible(true);
+  };
+
+  // 保存音频关联
+  const handleSaveAudioAssociation = async () => {
+    if (!currentEditScriptId) return;
+    
+    try {
+      // TODO: 先清除旧的关联，再添加新的
+      for (const audioId of selectedAudioIds) {
+        await writingApi.addAudioAssociation(currentEditScriptId, audioId);
+      }
+      message.success('音频关联成功');
+      setAudioModalVisible(false);
+      loadScripts(); // 刷新列表
+    } catch (error) {
+      console.error('关联音频失败:', error);
+      message.error('关联音频失败');
+    }
+  };
+
+  // 添加到RAG知识库
+  const handleAddToRag = async (scriptId: string) => {
+    Modal.confirm({
+      title: '确认加入RAG知识库？',
+      content: '将该播客文案存入RAG知识库，用于后续AI生成参考',
+      okText: '确认加入',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          // TODO: 调用后端API将文案存入RAG
+          // await writingApi.addScriptToRag(scriptId);
+          message.success('已加入RAG知识库');
+          loadScripts(); // 刷新列表
+        } catch (error) {
+          console.error('加入RAG失败:', error);
+          message.error('加入RAG失败');
+        }
+      }
+    });
   };
 
   useEffect(() => {
@@ -499,10 +582,39 @@ const PodcastPage: React.FC = () => {
 
   // 生成RSS Feed
   const handleGenerateRSS = async () => {
+    // 如果没有选择任何文案，提示用户
+    if (selectedScriptIds.length === 0) {
+      Modal.confirm({
+        title: '未选择文案',
+        content: '您没有选择任何文案。是否生成所有已完成(completed)状态的文案的RSS Feed？',
+        okText: '生成所有completed',
+        cancelText: '取消',
+        onOk: async () => {
+          generateRSSWithIds(undefined); // 不传script_ids，后端会自动获取所有completed
+        }
+      });
+      return;
+    }
+    
+    // 有选择时，确认生成选中的文案
+    Modal.confirm({
+      title: '生成RSS Feed',
+      content: `将为选中的 ${selectedScriptIds.length} 个文案生成RSS Feed，请确保这些文案都已标记为“完成”状态。`,
+      okText: '确认生成',
+      cancelText: '取消',
+      onOk: async () => {
+        generateRSSWithIds(selectedScriptIds);
+      }
+    });
+  };
+
+  // 实际生成RSS的函数
+  const generateRSSWithIds = async (scriptIds?: string[]) => {
     setGeneratingRSS(true);
     try {
       const response = await writingApi.generatePodcastRSS({
-        limit: 50,
+        script_ids: scriptIds,
+        limit: 100,
       });
       
       if (response.success && response.rss_xml) {
@@ -1129,6 +1241,10 @@ const PodcastPage: React.FC = () => {
                   生成RSS Feed
                 </Button>
                 
+                {selectedScriptIds.length > 0 && (
+                  <Tag color="blue">已选择 {selectedScriptIds.length} 个文案</Tag>
+                )}
+                
                 <Text>阶段：</Text>
                 <Select
                   style={{ width: 120 }}
@@ -1164,61 +1280,99 @@ const PodcastPage: React.FC = () => {
             
             {/* Table组件展示文案列表 */}
             <Table
+              rowSelection={{
+                selectedRowKeys: selectedScriptIds,
+                onChange: (keys) => setSelectedScriptIds(keys as string[])
+              }}
               columns={[
                 {
                   title: '阶段',
                   dataIndex: 'stage',
                   key: 'stage',
                   width: 100,
-                  render: (stage: string) => {
-                    const stageMap: Record<string, { text: string; color: string }> = {
-                      shenti: { text: '审题分析', color: 'blue' },
-                      gousi: { text: '构思提纲', color: 'green' },
-                      xiezuo: { text: '写作辅助', color: 'orange' },
-                      pinggu: { text: '写作评估', color: 'purple' }
-                    };
-                    const config = stageMap[stage] || { text: '未设置', color: 'default' };
-                    return <Tag color={config.color}>{config.text}</Tag>;
-                  }
-                },
-                {
-                  title: '标题',
-                  dataIndex: 'title',
-                  key: 'title',
-                  ellipsis: true,
-                  render: (title: string, record: PodcastScript) => (
+                  render: (stage: string, record: PodcastScript) => (
                     <Space>
-                      <span>{title}</span>
-                      {record.version > 1 && <Tag color="blue">v{record.version}</Tag>}
+                      {(() => {
+                        const stageMap: Record<string, { text: string; color: string }> = {
+                          shenti: { text: '审题分析', color: 'blue' },
+                          gousi: { text: '构思提纲', color: 'green' },
+                          xiezuo: { text: '写作辅助', color: 'orange' },
+                          pinggu: { text: '写作评估', color: 'purple' }
+                        };
+                        const config = stageMap[stage] || { text: '未设置', color: 'default' };
+                        return <Tag color={config.color}>{config.text}</Tag>;
+                      })()}
+                      <Button 
+                        type="link" 
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => handleOpenStageModal(record.script_id, record.stage)}
+                      />
                     </Space>
                   )
                 },
                 {
-                  title: '主题',
-                  dataIndex: 'topic',
-                  key: 'topic',
+                  title: '题目类型',
+                  dataIndex: 'question_type',
+                  key: 'question_type',
+                  width: 120,
+                  ellipsis: true,
+                  render: (text: string) => text || '-'
+                },
+                {
+                  title: '题库题目',
+                  dataIndex: 'question_name',
+                  key: 'question_name',
                   width: 150,
-                  ellipsis: true
+                  ellipsis: true,
+                  render: (text: string) => text || '-'
+                },
+                {
+                  title: '版本',
+                  key: 'version',
+                  width: 80,
+                  render: (_: any, record: PodcastScript) => (
+                    record.version > 1 ? <Tag color="blue">v{record.version}</Tag> : '-'
+                  )
                 },
                 {
                   title: '音频',
                   key: 'audio',
-                  width: 80,
+                  width: 120,
                   render: (_: any, record: PodcastScript) => (
-                    <Badge 
-                      status="processing" 
-                      text="待关联" 
-                      // TODO: 后续根据实际音频关联状态显示
-                    />
+                    <Space>
+                      <Badge 
+                        status="processing" 
+                        text="待关联" 
+                        // TODO: 后续根据实际音频关联状态显示
+                      />
+                      <Button 
+                        type="link" 
+                        size="small"
+                        icon={<EditOutlined />}
+                        onClick={() => handleOpenAudioModal(record.script_id)}
+                      >
+                        关联
+                      </Button>
+                    </Space>
                   )
                 },
                 {
                   title: 'RAG状态',
                   key: 'rag',
-                  width: 100,
-                  render: () => (
-                    <Tag color="default">未加入</Tag>
-                    // TODO: 后续根据实际RAG状态显示
+                  width: 120,
+                  render: (_: any, record: PodcastScript) => (
+                    <Space>
+                      <Tag color="default">未加入</Tag>
+                      // TODO: 后续根据实际RAG状态显示
+                      <Button 
+                        type="link" 
+                        size="small"
+                        onClick={() => handleAddToRag(record.script_id)}
+                      >
+                        加入
+                      </Button>
+                    </Space>
                   )
                 },
                 {
@@ -2100,6 +2254,63 @@ const PodcastPage: React.FC = () => {
             }}
           >
             {rssXmlContent || '加载中...'}
+          </div>
+        </div>
+      </Modal>
+
+      {/* 阶段编辑弹窗 */}
+      <Modal
+        title="设置写作阶段"
+        open={stageModalVisible}
+        onOk={handleSaveStage}
+        onCancel={() => setStageModalVisible(false)}
+        okText="保存"
+        cancelText="取消"
+      >
+        <div style={{ padding: '16px 0' }}>
+          <Text>请选择该文案所属的写作阶段：</Text>
+          <div style={{ marginTop: 16 }}>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="选择阶段"
+              value={selectedStage}
+              onChange={setSelectedStage}
+              size="large"
+            >
+              <Option value="shenti">审题分析 - 如何分析作文题目</Option>
+              <Option value="gousi">构思提纲 - 如何构建文章框架</Option>
+              <Option value="xiezuo">写作辅助 - 范文和写作技巧</Option>
+              <Option value="pinggu">写作评估 - 作文批改和优化建议</Option>
+            </Select>
+          </div>
+          <div style={{ marginTop: 16, padding: 12, background: '#f5f5f5', borderRadius: 4 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              说明：每个阶段对应一个独立的RSS Feed，方便用户根据需要订阅特定阶段的播客内容。
+            </Text>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 音频关联弹窗 */}
+      <Modal
+        title="关联参考音频"
+        open={audioModalVisible}
+        onOk={handleSaveAudioAssociation}
+        onCancel={() => setAudioModalVisible(false)}
+        okText="保存关联"
+        cancelText="取消"
+        width={600}
+      >
+        <div style={{ padding: '16px 0' }}>
+          <Text>选择要关联的参考音频（可多选）：</Text>
+          <div style={{ marginTop: 16 }}>
+            {/* TODO: 加载参考音频列表并显示 */}
+            <Alert
+              message="功能开发中"
+              description="这里将显示所有可用的参考音频列表，支持多选。后续会实现完整的音频选择和预览功能。"
+              type="info"
+              showIcon
+            />
           </div>
         </div>
       </Modal>

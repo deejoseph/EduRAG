@@ -70,11 +70,15 @@ export interface PodcastScript {
   version: number;
   parent_id?: string | null;
   status: 'draft' | 'completed' | 'archived';
+  stage?: 'shenti' | 'gousi' | 'xiezuo' | 'pinggu'; // 写作阶段
   created_at: string;
   updated_at: string;
   materials_count: number;
   model: string;
   content?: string; // 获取单个文案时包含内容
+  // 作文相关字段(从metadata中提取)
+  question_type?: string; // 题目类型
+  question_name?: string; // 题库题目名称
 }
 
 export interface PodcastScriptsListResponse {
