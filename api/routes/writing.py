@@ -1768,6 +1768,7 @@ def generate_podcast_rss_feed():
     """
     try:
         from flask import current_app
+        from podcast.script_state_manager import get_script_state_manager
         app_config = current_app.config.get('edurag', {})
         db = app_config.get('db')
         
@@ -1779,21 +1780,36 @@ def generate_podcast_rss_feed():
         topic = request.args.get('topic')
         limit = int(request.args.get('limit', 50))
         
-        # 构建where条件（ChromaDB要求使用$and操作符组合多个条件）
-        where_conditions = [
-            {'type': 'podcast_script'},
-            {'status': 'completed'}
-        ]
-        if topic:
-            where_conditions.append({'topic': topic})
-        
-        where_filter = {'$and': where_conditions}
-        
         # 检查集合是否存在
         if not db.collection_exists('podcast_scripts'):
             return error_response("播客文案集合尚未创建", 404)
         
         collection = db.get_collection('podcast_scripts')
+        
+        # 从状态管理器获取所有 completed 状态的文案ID
+        state_mgr = get_script_state_manager()
+        all_states = state_mgr.get_all_states()
+        completed_script_ids = [
+            sid for sid, state in all_states.items() 
+            if state.get('status') == 'completed'
+        ]
+        
+        # 构建where条件
+        where_conditions = [{'type': 'podcast_script'}]
+        if completed_script_ids:
+            # 只获取 completed 状态的文案
+            where_conditions.append({
+                '$or': [{'script_id': sid} for sid in completed_script_ids]
+            })
+        else:
+            # 如果没有 completed 的文案，返回空
+            return error_response("没有找到状态为 completed 的播客文案", 404)
+        
+        if topic:
+            where_conditions.append({'topic': topic})
+        
+        where_filter = {'$and': where_conditions}
+        
         results = collection.get(
             where=where_filter,
             limit=limit,
@@ -2016,12 +2032,7 @@ def update_podcast_script_status(script_id: str):
     }
     """
     try:
-        from flask import current_app
-        app_config = current_app.config.get('edurag', {})
-        db = app_config.get('db')
-        
-        if not db:
-            return error_response("数据库未初始化", 500)
+        from podcast.script_state_manager import get_script_state_manager
         
         # 获取新状态
         data = request.get_json()
@@ -2030,36 +2041,9 @@ def update_podcast_script_status(script_id: str):
         if new_status not in ['draft', 'completed', 'archived']:
             return error_response(f"无效的状态值: {new_status}，必须是 draft/completed/archived 之一", 400)
         
-        # 检查集合是否存在
-        if not db.collection_exists('podcast_scripts'):
-            return error_response(f"文案 {script_id} 不存在", 404)
-        
-        # 查询指定ID的文案
-        collection = db.get_collection('podcast_scripts')
-        results = collection.get(
-            where={'script_id': script_id},
-            include=['metadatas', 'documents']  # ChromaDB不支持include='ids'
-        )
-        
-        if not results['metadatas']:
-            return error_response(f"文案 {script_id} 不存在", 404)
-        
-        # 获取当前元数据、文档内容和ID
-        metadata = results['metadatas'][0]
-        content = results['documents'][0] if results['documents'] else ''
-        doc_id = results['ids'][0]  # ids会自动返回
-        
-        # 更新状态和时间戳
-        metadata['status'] = new_status
-        metadata['updated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
-        
-        # ChromaDB不支持直接更新，需要删除后重新添加
-        collection.delete(ids=[doc_id])
-        collection.add(
-            ids=[doc_id],
-            documents=[content],  # 使用之前获取的文档内容
-            metadatas=[metadata]
-        )
+        # 使用JSON文件管理状态，避免ChromaDB更新问题
+        state_mgr = get_script_state_manager()
+        state_mgr.update_script_status(script_id, new_status)
         
         logger.info(f"✅ 播客文案状态已更新: {script_id} -> {new_status}")
         
