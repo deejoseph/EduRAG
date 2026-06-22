@@ -166,11 +166,13 @@ class PodcastDeployer:
             content = script['content']
             script_id = metadata.get('script_id', '')
             
-            # 获取stage
+            # 获取stage,如果没有则默认为'xiezuo'(写作辅助)
             stage = all_states.get(script_id, {}).get('stage')
             if not stage or stage not in stage_scripts:
-                print(f"[WARN] 文案 {script_id} 未设置stage或stage无效，跳过")
-                continue
+                print(f"[WARN] 文案 {script_id} 未设置stage或stage无效，使用默认值 'xiezuo'")
+                stage = 'xiezuo'  # 默认阶段
+                # 自动更新状态管理器
+                state_mgr.update_script_stage(script_id, stage)
             
             # 构建音频URL
             audio_url = f"https://dee422.github.io/audio/{script_id}.mp3"
@@ -225,10 +227,11 @@ class PodcastDeployer:
                 ['git', 'status', '--porcelain'],
                 capture_output=True,
                 text=True,
+                encoding='utf-8',  # 指定UTF-8编码,避免GBK解码错误
                 cwd=git_repo_path
             )
             
-            if not result.stdout.strip():
+            if not result.stdout or not result.stdout.strip():
                 print("[INFO] 没有需要提交的更改")
                 return True
             
