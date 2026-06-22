@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Form, Input, Select, Checkbox, Button, message, Alert, Card, Space, Typography } from 'antd';
+import { Form, Input, Select, Checkbox, Button, message, Alert, Card, Space, Typography, Radio } from 'antd';
 import { TrophyOutlined, BookOutlined, SoundOutlined } from '@ant-design/icons';
+import MultiAiResults from '../../components/writing/MultiAiResults';
 import { useWritingStore } from '../../store/writingStore';
 import { writingApi } from '../../api/writing';
 import { addToPortfolio } from '../../api/portfolio';
@@ -24,6 +25,11 @@ const EssayEval: React.FC = () => {
   const [essay, setEssay] = useState(currentEssay || '');
   const [rubric, setRubric] = useState<string[]>(DEFAULT_SCORING_RUBRIC as unknown as string[]);
   const [loading, setLoading] = useState(false);
+  
+  // 多AI生成相关状态
+  const [multiAiMode, setMultiAiMode] = useState(false); // 是否启用多AI模式
+  const [multiAiResults, setMultiAiResults] = useState<any[]>([]);
+  const [multiAiLoading, setMultiAiLoading] = useState(false);
 
   if (!topic) {
     return (
@@ -106,6 +112,36 @@ const EssayEval: React.FC = () => {
     }
   };
 
+  // 多AI并行生成播客素材
+  const handleMultiAiGenerate = async () => {
+    if (!essay.trim()) {
+      message.warning('请先输入作文内容');
+      return;
+    }
+    
+    setMultiAiLoading(true);
+    try {
+      const res = await writingApi.multiAiAnalyze({
+        topic: essay.trim().slice(0, 100), // 使用作文前100字作为topic
+        grade_level: gradeLevel,
+        topic_type: '材料作文',
+        models: ['qwen3:8b', 'gemma3:4b'],
+      });
+      
+      if (res.success && res.results) {
+        setMultiAiResults(res.results);
+        message.success(`✅ 多AI生成完成！共 ${res.count} 个结果`);
+      } else {
+        message.error('生成失败，请重试');
+      }
+    } catch (error) {
+      console.error('多AI生成失败:', error);
+      message.error('生成失败，请检查连接');
+    } finally {
+      setMultiAiLoading(false);
+    }
+  };
+
   // 从评估文本中提取分数（简单解析）
   const extractScore = (text: string): number | undefined => {
     const match = text.match(/总分[：:]\s*(\d+)/);
@@ -120,6 +156,25 @@ const EssayEval: React.FC = () => {
         showIcon
         style={{ marginBottom: 16 }}
       />
+
+      {/* 播客素材模式选项卡 */}
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Space>
+          <span style={{ fontWeight: 500 }}>生成模式：</span>
+          <Radio.Group
+            value={multiAiMode}
+            onChange={(e) => setMultiAiMode(e.target.value)}
+            buttonStyle="solid"
+          >
+            <Radio.Button value={false}>
+              <TrophyOutlined /> 普通评估
+            </Radio.Button>
+            <Radio.Button value={true}>
+              <SoundOutlined /> 播客素材模式（多AI）
+            </Radio.Button>
+          </Radio.Group>
+        </Space>
+      </Card>
 
       <Form layout="vertical">
         <Form.Item label="作文全文" required>
@@ -148,15 +203,29 @@ const EssayEval: React.FC = () => {
           />
         </Form.Item>
 
-        <Button
-          type="primary"
-          icon={<TrophyOutlined />}
-          onClick={handleSubmit}
-          size="large"
-          block
-        >
-          生成评估报告
-        </Button>
+        {multiAiMode ? (
+          <Button
+            type="primary"
+            icon={<SoundOutlined />}
+            onClick={handleMultiAiGenerate}
+            loading={multiAiLoading}
+            size="large"
+            block
+            style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+          >
+            一键生成播客素材（多AI并行）
+          </Button>
+        ) : (
+          <Button
+            type="primary"
+            icon={<TrophyOutlined />}
+            onClick={handleSubmit}
+            size="large"
+            block
+          >
+            生成评估报告
+          </Button>
+        )}
       </Form>
 
       <AnswerDisplay content={evaluationResult} title="评估报告" />
@@ -192,6 +261,19 @@ const EssayEval: React.FC = () => {
               </Button>
             </Space>
           </Card>
+        </div>
+      )}
+
+      {/* 多AI结果展示 */}
+      {multiAiMode && multiAiResults.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <MultiAiResults
+            results={multiAiResults}
+            stage="evaluation"
+            topic={essay.slice(0, 50)}
+            loading={multiAiLoading}
+            onRegenerate={handleMultiAiGenerate}
+          />
         </div>
       )}
     </LoadingOverlay>
