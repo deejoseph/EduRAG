@@ -16,6 +16,7 @@ import type { HelpType } from '../../types/api';
 import AnswerDisplay from '../../components/writing/AnswerDisplay';
 import LoadingOverlay from '../../components/common/LoadingOverlay';
 import MultiAiResults from '../../components/writing/MultiAiResults';
+import QuotesAndMaterials from '../../components/writing/QuotesAndMaterials';
 
 const { Text, Paragraph } = Typography;
 
@@ -350,6 +351,9 @@ const WritingAssist: React.FC = () => {
           </Col>
         </Row>
       </Card>
+
+      {/* 名句和素材模块 */}
+      <QuotesAndMaterials topic={topic} />
     </LoadingOverlay>
   );
 };
