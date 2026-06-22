@@ -12,7 +12,7 @@ import UploadPage from './pages/Upload';
 import PortfolioPage from './pages/Portfolio';
 import HotTopicsPage from './pages/HotTopics';
 import PodcastPage from './pages/Podcast';
-import QuotesAndMaterialsPage from './pages/QuotesAndMaterials';
+// import QuotesAndMaterialsPage from './pages/QuotesAndMaterials'; // 临时注释,完整页面有问题
 import QuotesAndMaterialsTest from './pages/QuotesAndMaterials/Test';
 
 const App: React.FC = () => {
