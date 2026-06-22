@@ -1796,14 +1796,18 @@ def generate_podcast_rss_feed():
         
         # 构建where条件
         where_conditions = [{'type': 'podcast_script'}]
-        if completed_script_ids:
-            # 只获取 completed 状态的文案
+        
+        if not completed_script_ids:
+            # 如果没有 completed 的文案，返回空
+            return error_response("没有找到状态为 completed 的播客文案", 404)
+        elif len(completed_script_ids) == 1:
+            # 如果只有一个 completed 文案，直接使用 script_id 过滤（避免 $or 单元素问题）
+            where_conditions.append({'script_id': completed_script_ids[0]})
+        else:
+            # 多个 completed 文案，使用 $or
             where_conditions.append({
                 '$or': [{'script_id': sid} for sid in completed_script_ids]
             })
-        else:
-            # 如果没有 completed 的文案，返回空
-            return error_response("没有找到状态为 completed 的播客文案", 404)
         
         if topic:
             where_conditions.append({'topic': topic})
