@@ -2286,26 +2286,12 @@ def get_script_audio_files(script_id: str):
 @writing_bp.route('/search-quotes', methods=['POST'])
 def search_quotes():
     """
-    基于RAG知识库检索名人名言
+    从名言库中检索名人名言
     
     请求体：
     {
         "topic": "主题关键词（必填）",
         "top_k": "返回数量（可选，默认10）"
-    }
-    
-    响应体：
-    {
-        "success": true,
-        "quotes": [
-            {
-                "content": "名言内容",
-                "author": "作者",
-                "source": "出处",
-                "metadata": {...}
-            }
-        ],
-        "count": 数量
     }
     """
     data = request.get_json()
@@ -2319,41 +2305,40 @@ def search_quotes():
     top_k = data.get('top_k', 10)
     
     try:
-        retriever = current_app.config['edurag']['retriever']
+        db = current_app.config['edurag'].get('db')
+        if not db:
+            return error_response("服务端错误: DB未初始化", 500)
         
-        # 构建查询：搜索包含“名言”、“警句”等关键词的内容
-        query = f"{topic} 名言 警句 格言"
+        # 获取名言库集合
+        collection = db.get_collection('quotes_materials')
         
-        results = retriever.search(
-            collection_name='chinese_essays',
-            query=query,
-            top_k=top_k * 2,  # 多检索一些，后续过滤
-            score_threshold=0.1
+        logger.info(f"[search_quotes] 搜索主题: {topic}, top_k: {top_k}")
+        
+        # 使用语义搜索，并按type='quote'过滤
+        results = collection.query(
+            query_texts=[topic],
+            n_results=top_k,
+            where={'type': 'quote'}
         )
         
-        # 过滤和提取名言
         quotes = []
-        for i, (doc, meta) in enumerate(zip(results.documents, results.metadatas)):
-            # 简单启发式：短文本更可能是名言
-            if len(doc) < 300 and any(keyword in doc for keyword in ['曰', '云', '说', '言', '谓']):
-                # 尝试提取作者信息
-                author = meta.get('author', '佚名')
-                source = meta.get('source', meta.get('source_file', '未知'))
-                
+        if results and results['ids'] and results['ids'][0]:
+            for i, (doc_id, doc, meta, distance) in enumerate(zip(
+                results['ids'][0],
+                results['documents'][0],
+                results['metadatas'][0],
+                results['distances'][0]
+            )):
                 quotes.append({
-                    'id': f'quote_{i}',
-                    'content': doc.strip(),
-                    'author': author,
-                    'source': source,
-                    'score': round(results.scores[i], 3),
+                    'id': doc_id,
+                    'content': doc,
+                    'author': meta.get('author', '佚名'),
+                    'source': meta.get('source', '未知'),
+                    'score': round(1 - distance, 3),  # 距离转换为相似度
                     'metadata': meta
                 })
         
-        # 按相似度排序，取前top_k个
-        quotes.sort(key=lambda x: x['score'], reverse=True)
-        quotes = quotes[:top_k]
-        
-        logger.info(f"检索到 {len(quotes)} 条相关名言")
+        logger.info(f"[search_quotes] 找到 {len(quotes)} 条名言")
         
         return success_response({
             'quotes': quotes,
@@ -2371,26 +2356,12 @@ def search_quotes():
 @writing_bp.route('/search-materials', methods=['POST'])
 def search_materials():
     """
-    基于RAG知识库检索真实案例、历史事件
+    从案例库中检索真实案例、历史事件
     
     请求体：
     {
         "topic": "主题关键词（必填）",
         "top_k": "返回数量（可选，默认10）"
-    }
-    
-    响应体：
-    {
-        "success": true,
-        "materials": [
-            {
-                "title": "案例标题",
-                "content": "案例内容",
-                "type": "案例类型（历史事件/现实案例/人物故事）",
-                "metadata": {...}
-            }
-        ],
-        "count": 数量
     }
     """
     data = request.get_json()
@@ -2404,44 +2375,40 @@ def search_materials():
     top_k = data.get('top_k', 10)
     
     try:
-        retriever = current_app.config['edurag']['retriever']
+        db = current_app.config['edurag'].get('db')
+        if not db:
+            return error_response("服务端错误: DB未初始化", 500)
         
-        # 构建查询：搜索包含“案例”、“事件”、“故事”等关键词的内容
-        query = f"{topic} 案例 事例 故事 历史 事件 实例"
+        # 获取案例库集合
+        collection = db.get_collection('quotes_materials')
         
-        results = retriever.search(
-            collection_name='chinese_essays',
-            query=query,
-            top_k=top_k * 2,
-            score_threshold=0.1
+        logger.info(f"[search_materials] 搜索主题: {topic}, top_k: {top_k}")
+        
+        # 使用语义搜索，并按type='material'过滤
+        results = collection.query(
+            query_texts=[topic],
+            n_results=top_k,
+            where={'type': 'material'}
         )
         
-        # 过滤和提取案例
         materials = []
-        for i, (doc, meta) in enumerate(zip(results.documents, results.metadatas)):
-            # 中等长度的文本更适合作为案例
-            if 100 < len(doc) < 1000:
-                # 判断案例类型
-                case_type = "现实案例"
-                if any(kw in doc for kw in ['历史', '古代', '唐朝', '宋朝', '明朝', '清朝']):
-                    case_type = "历史事件"
-                elif any(kw in doc for kw in ['人物', '故事', '事迹']):
-                    case_type = "人物故事"
-                
+        if results and results['ids'] and results['ids'][0]:
+            for i, (doc_id, doc, meta, distance) in enumerate(zip(
+                results['ids'][0],
+                results['documents'][0],
+                results['metadatas'][0],
+                results['distances'][0]
+            )):
                 materials.append({
-                    'id': f'material_{i}',
-                    'title': meta.get('topic', f'{topic}相关案例'),
-                    'content': doc.strip(),
-                    'type': case_type,
-                    'score': round(results.scores[i], 3),
+                    'id': doc_id,
+                    'title': meta.get('title', f'{topic}相关案例'),
+                    'content': doc,
+                    'type': meta.get('case_type', '现实案例'),
+                    'score': round(1 - distance, 3),
                     'metadata': meta
                 })
         
-        # 按相似度排序，取前top_k个
-        materials.sort(key=lambda x: x['score'], reverse=True)
-        materials = materials[:top_k]
-        
-        logger.info(f"检索到 {len(materials)} 条相关案例")
+        logger.info(f"[search_materials] 找到 {len(materials)} 条案例")
         
         return success_response({
             'materials': materials,
@@ -2481,7 +2448,7 @@ def update_quote_or_material(item_id):
     
     try:
         db = current_app.config['edurag']['db']
-        collection = db.chroma_db._collection
+        collection = db.get_collection('quotes_materials')
         
         # 获取现有元数据
         existing = collection.get(ids=[item_id])
@@ -2498,7 +2465,7 @@ def update_quote_or_material(item_id):
         else:
             metadata['content'] = data.get('content', metadata.get('content', ''))
             metadata['title'] = data.get('title', metadata.get('title', ''))
-            metadata['type'] = data.get('case_type', metadata.get('type', ''))
+            metadata['case_type'] = data.get('case_type', metadata.get('case_type', ''))
         
         # ChromaDB不支持直接update,需要先delete再add
         collection.delete(ids=[item_id])
@@ -2526,7 +2493,7 @@ def delete_quote_or_material(item_id):
     """
     try:
         db = current_app.config['edurag']['db']
-        collection = db.chroma_db._collection
+        collection = db.get_collection('quotes_materials')
         
         # 检查是否存在
         existing = collection.get(ids=[item_id])
@@ -2589,19 +2556,22 @@ def ai_search_and_save():
         quotes_saved = 0
         materials_saved = 0
         
+        # 获取名言案例库集合
+        collection = db.get_collection('quotes_materials')
+        
         # 1. AI生成名言
         if 'quotes' in search_types:
-            system_prompt = f"""你是一位知识渊博的学者，请根据主题“{topic}”提供5-8条相关的名人名言。
+            system_prompt = f"""你是一位知识渊博的学者，请根据主题"{topic}"提供5-8条相关的名人名言。
 要求：
 1. 必须是真实存在的名言，不要编造
 2. 包含作者和出处信息
-3. 格式：每行一条，格式为“名言内容 | 作者 | 出处”
+3. 格式：每行一条，格式为"名言内容 | 作者 | 出处"
 4. 名言要有启发性和教育意义
 
 请直接输出名言列表，不要其他解释："""
             
             result = llm.generate(
-                prompt=f"请提供关于“{topic}”的名人名言：",
+                prompt=f'请提供关于「{topic}」的名人名言：',
                 system_prompt=system_prompt,
                 temperature=0.7
             )
@@ -2615,11 +2585,11 @@ def ai_search_and_save():
                     if len(parts) >= 3:
                         content, author, source = parts[0], parts[1], parts[2]
                         
-                        # 保存到ChromaDB
+                        # 保存到quotes_materials集合
                         import uuid
                         item_id = f"quote_{uuid.uuid4().hex[:12]}"
                         
-                        db.chroma_db._collection.add(
+                        collection.add(
                             ids=[item_id],
                             documents=[content],
                             metadatas=[{
@@ -2678,11 +2648,11 @@ def ai_search_and_save():
                         content += line + '\n'
                 
                 if title and content:
-                    # 保存到ChromaDB
+                    # 保存到quotes_materials集合
                     import uuid
                     item_id = f"material_{uuid.uuid4().hex[:12]}"
                     
-                    db.chroma_db._collection.add(
+                    collection.add(
                         ids=[item_id],
                         documents=[content],
                         metadatas=[{

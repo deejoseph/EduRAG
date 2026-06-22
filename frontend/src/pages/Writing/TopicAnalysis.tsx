@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, message, Card, Badge, Space, Typography, Tag, Radio } from 'antd';
-import { BulbOutlined, BookOutlined, SoundOutlined, StarOutlined } from '@ant-design/icons';
+import { Form, Input, Select, Button, message, Card, Badge, Space, Typography, Tag, Radio, List, Popconfirm } from 'antd';
+import { BulbOutlined, BookOutlined, SoundOutlined, StarOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useWritingStore } from '../../store/writingStore';
 import { writingApi } from '../../api/writing';
-import { getFavorites } from '../../api/hotTopics';
+import { getFavorites, unfavoriteTopic } from '../../api/hotTopics';
 import { TOPIC_TYPES, GRADE_LEVELS } from '../../constants';
 import AnswerDisplay from '../../components/writing/AnswerDisplay';
 import ReferencePanel from '../../components/writing/ReferencePanel';
@@ -48,6 +48,18 @@ const TopicAnalysis: React.FC = () => {
   const handleSelectTopic = (topicData: any) => {
     setTopic(topicData.essay_prompt || topicData.title);
     message.success(`已选择题目：${topicData.title}`);
+  };
+
+  // 删除题目
+  const handleDeleteTopic = async (title: string) => {
+    try {
+      await unfavoriteTopic(title);
+      setFavorites(prev => prev.filter(f => f.title !== title));
+      message.success(`已删除：${title}`);
+    } catch (error) {
+      console.error('删除失败:', error);
+      message.error('删除失败');
+    }
   };
 
   // 普通审题分析
@@ -123,32 +135,51 @@ const TopicAnalysis: React.FC = () => {
         {favorites.length === 0 ? (
           <Text type="secondary">暂无收藏的题目，请先到"命题热点"或"知识检索"页面收藏感兴趣的话题</Text>
         ) : (
-          <Select
-            placeholder="选择要练习的题目..."
-            style={{ width: '100%' }}
-            onChange={(value) => {
-              const selected = favorites.find(f => f.title === value);
-              if (selected) handleSelectTopic(selected);
-            }}
-            options={favorites.map(f => ({
-              label: (
-                <Space direction="vertical" size={0}>
-                  <Space size={4} align="center">
-                    <Text strong>{f.title}</Text>
-                    {f.source === 'rag' && (
-                      <Tag color="green" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>
-                        RAG
-                      </Tag>
-                    )}
-                  </Space>
-                  <Space size="small">
-                    <Badge count={`已练习${f.practice_count || 0}次`} style={{ backgroundColor: f.practice_count > 0 ? '#faad14' : '#d9d9d9' }} />
-                    <Text type="secondary" style={{ fontSize: 12 }}>{f.category}</Text>
-                  </Space>
-                </Space>
-              ),
-              value: f.title,
-            }))}
+          <List
+            size="small"
+            dataSource={favorites}
+            renderItem={(item) => (
+              <List.Item
+                style={{ padding: '8px 0' }}
+                actions={[
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => handleSelectTopic(item)}
+                  >
+                    选择
+                  </Button>,
+                  <Popconfirm
+                    key="del"
+                    title="确定要从题库中删除这个题目吗？"
+                    onConfirm={() => handleDeleteTopic(item.title)}
+                    okText="确定"
+                    cancelText="取消"
+                  >
+                    <Button type="text" danger size="small" icon={<DeleteOutlined />}>
+                      删除
+                    </Button>
+                  </Popconfirm>
+                ]}
+              >
+                <List.Item.Meta
+                  title={
+                    <Space size={4}>
+                      <Text strong style={{ fontSize: 13 }}>{item.title}</Text>
+                      {item.source === 'rag' && (
+                        <Tag color="green" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px' }}>RAG</Tag>
+                      )}
+                    </Space>
+                  }
+                  description={
+                    <Space size={8}>
+                      <Tag style={{ fontSize: 11 }}>{item.category || '未分类'}</Tag>
+                      <Text type="secondary" style={{ fontSize: 11 }}>已练习{item.practice_count || 0}次</Text>
+                    </Space>
+                  }
+                />
+              </List.Item>
+            )}
           />
         )}
       </Card>
