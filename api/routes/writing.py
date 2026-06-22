@@ -2448,3 +2448,259 @@ def search_materials():
     except Exception as e:
         logger.error(f"案例检索失败: {e}")
         return error_response(f"服务端错误: {e}", 500)
+
+
+# ─────────────────────────────────────────────────────────
+# PUT /writing/quotes-materials/<id>  更新名言或案例
+# ─────────────────────────────────────────────────────────
+@writing_bp.route('/quotes-materials/<item_id>', methods=['PUT'])
+def update_quote_or_material(item_id):
+    """
+    更新名言或案例内容
+    
+    请求体：
+    {
+        "type": "quote" | "material",
+        "content": "新内容",
+        "author": "作者(仅名言)",
+        "source": "出处(仅名言)",
+        "title": "标题(仅案例)",
+        "case_type": "案例类型(仅案例)"
+    }
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("请求体不能为空")
+    
+    item_type = data.get('type')  # quote or material
+    if item_type not in ['quote', 'material']:
+        return error_response("必须指定 type 为 quote 或 material")
+    
+    try:
+        db = current_app.config['edurag']['db']
+        collection = db.chroma_db._collection
+        
+        # 获取现有元数据
+        existing = collection.get(ids=[item_id])
+        if not existing['metadatas']:
+            return error_response("项目不存在", 404)
+        
+        metadata = existing['metadatas'][0]
+        
+        # 更新字段
+        if item_type == 'quote':
+            metadata['content'] = data.get('content', metadata.get('content', ''))
+            metadata['author'] = data.get('author', metadata.get('author', ''))
+            metadata['source'] = data.get('source', metadata.get('source', ''))
+        else:
+            metadata['content'] = data.get('content', metadata.get('content', ''))
+            metadata['title'] = data.get('title', metadata.get('title', ''))
+            metadata['type'] = data.get('case_type', metadata.get('type', ''))
+        
+        # ChromaDB不支持直接update,需要先delete再add
+        collection.delete(ids=[item_id])
+        collection.add(
+            ids=[item_id],
+            documents=[metadata.get('content', '')],
+            metadatas=[metadata]
+        )
+        
+        logger.info(f"更新{item_type}成功: {item_id}")
+        return success_response({'message': '更新成功'})
+    
+    except Exception as e:
+        logger.error(f"更新失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+# ─────────────────────────────────────────────────────────
+# DELETE /writing/quotes-materials/<id>  删除名言或案例
+# ─────────────────────────────────────────────────────────
+@writing_bp.route('/quotes-materials/<item_id>', methods=['DELETE'])
+def delete_quote_or_material(item_id):
+    """
+    删除名言或案例
+    """
+    try:
+        db = current_app.config['edurag']['db']
+        collection = db.chroma_db._collection
+        
+        # 检查是否存在
+        existing = collection.get(ids=[item_id])
+        if not existing['metadatas']:
+            return error_response("项目不存在", 404)
+        
+        # 删除
+        collection.delete(ids=[item_id])
+        
+        logger.info(f"删除成功: {item_id}")
+        return success_response({'message': '删除成功'})
+    
+    except Exception as e:
+        logger.error(f"删除失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+# ─────────────────────────────────────────────────────────
+# POST /writing/ai-search-quotes-materials  AI搜索并保存
+# ─────────────────────────────────────────────────────────
+@writing_bp.route('/ai-search-quotes-materials', methods=['POST'])
+def ai_search_and_save():
+    """
+    使用AI搜索相关名句和素材,并保存到知识库
+    
+    请求体：
+    {
+        "topic": "主题关键词（必填）",
+        "search_types": ["quotes", "materials"]  # 搜索类型
+    }
+    
+    响应体：
+    {
+        "success": true,
+        "saved_count": 保存数量,
+        "quotes_saved": 名言数量,
+        "materials_saved": 案例数量
+    }
+    """
+    data = request.get_json()
+    if not data:
+        return error_response("请求体不能为空")
+    
+    topic = data.get('topic')
+    if not topic:
+        return error_response("必须提供 topic 字段")
+    
+    search_types = data.get('search_types', ['quotes', 'materials'])
+    
+    try:
+        from flask import current_app
+        app_config = current_app.config.get('edurag', {})
+        llm = app_config.get('llm')
+        retriever = app_config.get('retriever')
+        db = app_config.get('db')
+        
+        if not llm or not retriever or not db:
+            return error_response("服务端错误: LLM/RAG/DB未初始化", 500)
+        
+        quotes_saved = 0
+        materials_saved = 0
+        
+        # 1. AI生成名言
+        if 'quotes' in search_types:
+            system_prompt = f"""你是一位知识渊博的学者，请根据主题“{topic}”提供5-8条相关的名人名言。
+要求：
+1. 必须是真实存在的名言，不要编造
+2. 包含作者和出处信息
+3. 格式：每行一条，格式为“名言内容 | 作者 | 出处”
+4. 名言要有启发性和教育意义
+
+请直接输出名言列表，不要其他解释："""
+            
+            result = llm.generate(
+                prompt=f"请提供关于“{topic}”的名人名言：",
+                system_prompt=system_prompt,
+                temperature=0.7
+            )
+            
+            response_text = result.get('response', '')
+            lines = response_text.strip().split('\n')
+            
+            for line in lines:
+                if '|' in line:
+                    parts = [p.strip() for p in line.split('|')]
+                    if len(parts) >= 3:
+                        content, author, source = parts[0], parts[1], parts[2]
+                        
+                        # 保存到ChromaDB
+                        import uuid
+                        item_id = f"quote_{uuid.uuid4().hex[:12]}"
+                        
+                        db.chroma_db._collection.add(
+                            ids=[item_id],
+                            documents=[content],
+                            metadatas=[{
+                                'type': 'quote',
+                                'content': content,
+                                'author': author,
+                                'source': source,
+                                'topic': topic,
+                                'created_at': int(time.time() * 1000)
+                            }]
+                        )
+                        quotes_saved += 1
+        
+        # 2. AI生成案例
+        if 'materials' in search_types:
+            system_prompt = f"""你是一位历史学家和教育专家，请根据主题“{topic}”提供3-5个相关的真实案例。
+要求：
+1. 必须是真实的历史事件、人物故事或现实案例，不要编造
+2. 每个案例包含标题、详细内容、类型(历史事件/人物故事/现实案例)
+3. 格式：每个案例用以下格式
+   标题：xxx
+   类型：xxx
+   内容：xxx
+   ---
+4. 案例要有教育意义和启发性
+
+请直接输出案例列表，不要其他解释："""
+            
+            result = llm.generate(
+                prompt=f"请提供关于“{topic}”的真实案例：",
+                system_prompt=system_prompt,
+                temperature=0.7
+            )
+            
+            response_text = result.get('response', '')
+            cases = response_text.split('---')
+            
+            for case in cases:
+                case = case.strip()
+                if not case:
+                    continue
+                
+                # 解析案例
+                title = ''
+                case_type = '现实案例'
+                content = ''
+                
+                for line in case.split('\n'):
+                    if line.startswith('标题：'):
+                        title = line.replace('标题：', '').strip()
+                    elif line.startswith('类型：'):
+                        case_type = line.replace('类型：', '').strip()
+                    elif line.startswith('内容：'):
+                        content = line.replace('内容：', '').strip()
+                    elif not line.startswith(('标题', '类型', '内容')):
+                        content += line + '\n'
+                
+                if title and content:
+                    # 保存到ChromaDB
+                    import uuid
+                    item_id = f"material_{uuid.uuid4().hex[:12]}"
+                    
+                    db.chroma_db._collection.add(
+                        ids=[item_id],
+                        documents=[content],
+                        metadatas=[{
+                            'type': 'material',
+                            'title': title,
+                            'content': content,
+                            'case_type': case_type,
+                            'topic': topic,
+                            'created_at': int(time.time() * 1000)
+                        }]
+                    )
+                    materials_saved += 1
+        
+        logger.info(f"AI搜索完成: 名言{quotes_saved}条, 案例{materials_saved}条")
+        
+        return success_response({
+            'saved_count': quotes_saved + materials_saved,
+            'quotes_saved': quotes_saved,
+            'materials_saved': materials_saved
+        })
+    
+    except Exception as e:
+        logger.error(f"AI搜索失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
