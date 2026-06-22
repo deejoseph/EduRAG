@@ -2038,15 +2038,16 @@ def update_podcast_script_status(script_id: str):
         collection = db.get_collection('podcast_scripts')
         results = collection.get(
             where={'script_id': script_id},
-            include=['metadatas', 'ids']
+            include=['metadatas', 'documents']  # ChromaDB不支持include='ids'
         )
         
         if not results['metadatas']:
             return error_response(f"文案 {script_id} 不存在", 404)
         
-        # 获取当前元数据和ID
+        # 获取当前元数据、文档内容和ID
         metadata = results['metadatas'][0]
-        doc_id = results['ids'][0]
+        content = results['documents'][0] if results['documents'] else ''
+        doc_id = results['ids'][0]  # ids会自动返回
         
         # 更新状态和时间戳
         metadata['status'] = new_status
@@ -2056,7 +2057,7 @@ def update_podcast_script_status(script_id: str):
         collection.delete(ids=[doc_id])
         collection.add(
             ids=[doc_id],
-            documents=[metadata.get('content', '')],
+            documents=[content],  # 使用之前获取的文档内容
             metadatas=[metadata]
         )
         
