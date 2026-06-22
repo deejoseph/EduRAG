@@ -41,11 +41,11 @@ class PodcastDeployer:
             self.pages_root = Path(pages_repo_path)
             if not self.pages_root.exists():
                 raise FileNotFoundError(f"GitHub Pages仓库路径不存在: {pages_repo_path}")
-            print(f"✅ 使用外部GitHub Pages仓库: {self.pages_root}")
+            print(f"[OK] 使用外部GitHub Pages仓库: {self.pages_root}")
         else:
             # 使用当前仓库的podcast-output目录
             self.pages_root = project_root / "podcast-output"
-            print("ℹ️  使用当前仓库的podcast-output目录")
+            print("[INFO] 使用当前仓库的podcast-output目录")
         
         self.output_dir = self.pages_root
         self.audio_dir = self.output_dir / "audio"
@@ -61,7 +61,7 @@ class PodcastDeployer:
     def get_completed_scripts(self, limit=50):
         """获取所有已完成的播客文案"""
         if not self.db.collection_exists('podcast_scripts'):
-            print("⚠️ 播客文案集合不存在")
+            print("[WARN] 播客文案集合不存在")
             return []
         
         collection = self.db.get_collection('podcast_scripts')
@@ -81,7 +81,7 @@ class PodcastDeployer:
         # 按时间排序（最新的在前）
         scripts.sort(key=lambda x: x['metadata'].get('created_at', ''), reverse=True)
         
-        print(f"✅ 找到 {len(scripts)} 个已完成的播客文案")
+        print(f"[OK] 找到 {len(scripts)} 个已完成的播客文案")
         return scripts
     
     def generate_tts_audio(self, script_id, content):
@@ -94,12 +94,12 @@ class PodcastDeployer:
         
         # 如果音频文件已存在，跳过
         if audio_path.exists():
-            print(f"⏭️ 音频文件已存在，跳过: {script_id}")
+            print(f"[SKIP] 音频文件已存在，跳过: {script_id}")
             return str(audio_path)
         
         # TODO: 这里应该调用真实的TTS API
         # 例如：Azure TTS, 阿里云TTS, 或本地的tts_generator
-        print(f"⚠️ TTS音频生成功能待实现，创建占位符文件: {script_id}")
+        print(f"[WARN] TTS音频生成功能待实现，创建占位符文件: {script_id}")
         
         # 创建占位符文件（仅用于测试）
         with open(audio_path, 'w', encoding='utf-8') as f:
@@ -109,7 +109,7 @@ class PodcastDeployer:
     
     def generate_rss_feed(self, scripts):
         """生成RSS Feed XML文件"""
-        print("📝 生成RSS Feed...")
+        print("[INFO] 生成RSS Feed...")
         
         # 准备数据格式
         script_list = []
@@ -134,21 +134,21 @@ class PodcastDeployer:
         with open(self.rss_file, 'w', encoding='utf-8') as f:
             f.write(rss_xml)
         
-        print(f"✅ RSS Feed已生成: {self.rss_file}")
+        print(f"[OK] RSS Feed已生成: {self.rss_file}")
         return True
     
     def commit_and_push(self, pages_repo_path=None):
         """提交并推送到GitHub"""
-        print("🚀 提交并推送到GitHub...")
+        print("[INFO] 提交并推送到GitHub...")
         
         try:
             # 确定Git仓库路径
             if pages_repo_path:
                 git_repo_path = Path(pages_repo_path)
-                print(f"✅ 推送到外部仓库: {git_repo_path}")
+                print(f"[OK] 推送到外部仓库: {git_repo_path}")
             else:
                 git_repo_path = self.project_root
-                print(f"ℹ️  推送到当前仓库")
+                print(f"[INFO] 推送到当前仓库")
             
             # 检查是否有更改
             result = subprocess.run(
@@ -159,7 +159,7 @@ class PodcastDeployer:
             )
             
             if not result.stdout.strip():
-                print("ℹ️ 没有需要提交的更改")
+                print("[INFO] 没有需要提交的更改")
                 return True
             
             # 添加文件
@@ -185,56 +185,56 @@ class PodcastDeployer:
                 cwd=git_repo_path
             )
             
-            print("✅ 成功推送到GitHub")
-            print("📡 GitHub Pages将在1-2分钟内自动部署")
+            print("[OK] 成功推送到GitHub")
+            print("[INFO] GitHub Pages将在1-2分钟内自动部署")
             return True
             
         except subprocess.CalledProcessError as e:
-            print(f"❌ Git操作失败: {e}")
+            print(f"[ERROR] Git操作失败: {e}")
             return False
     
     def deploy(self, skip_audio=False, pages_repo_path=None):
         """执行完整部署流程"""
         print("=" * 60)
-        print("🎙️ 播客自动化部署开始")
+        print("[START] 播客自动化部署开始")
         print("=" * 60)
         
         # 1. 获取已完成的文案
         scripts = self.get_completed_scripts()
         if not scripts:
-            print("❌ 没有找到可部署的播客文案")
+            print("[ERROR] 没有找到可部署的播客文案")
             return False
         
         # 2. 生成音频文件（可选）
         if not skip_audio:
-            print("\n🎵 步骤1: 生成TTS音频文件")
+            print("\n[STEP 1/3] 生成TTS音频文件")
             for script in scripts:
                 script_id = script['metadata'].get('script_id', '')
                 content = script['content']
                 self.generate_tts_audio(script_id, content)
         else:
-            print("\n⏭️ 跳过音频生成")
+            print("\n[SKIP] 跳过音频生成")
         
         # 3. 生成RSS Feed
-        print("\n📄 步骤2: 生成RSS Feed")
+        print("\n[STEP 2/3] 生成RSS Feed")
         self.generate_rss_feed(scripts)
         
         # 4. 提交并推送
-        print("\n📤 步骤3: 提交到GitHub")
+        print("\n[STEP 3/3] 提交到GitHub")
         success = self.commit_and_push(pages_repo_path=pages_repo_path)
         
         if success:
             print("\n" + "=" * 60)
-            print("✅ 部署完成！")
+            print("[SUCCESS] 部署完成！")
             print("=" * 60)
-            print(f"\n📡 RSS Feed URL: https://dee422.github.io/feed.xml")
-            print(f"🎧 音频文件目录: https://dee422.github.io/audio/")
-            print("\n💡 提示:")
+            print(f"\n[RSS URL] https://dee422.github.io/feed.xml")
+            print(f"[AUDIO DIR] https://dee422.github.io/audio/")
+            print("\n[INFO] 提示:")
             print("   1. 等待1-2分钟让GitHub Pages部署完成")
             print("   2. 访问上述URL验证文件是否正确部署")
             print("   3. 在小宇宙等平台提交RSS URL: https://dee422.github.io/feed.xml")
         else:
-            print("\n❌ 部署失败")
+            print("\n[FAILED] 部署失败")
         
         return success
 
