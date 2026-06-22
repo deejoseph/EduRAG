@@ -321,4 +321,17 @@ export const writingApi = {
       topic,
       top_k: top_k || 10
     }),
+  
+  // 名句和素材管理接口
+  updateQuoteOrMaterial: (id: string, data: any) =>
+    apiClient.put<any, { success: boolean; message: string }>(`/writing/quotes-materials/${id}`, data),
+  
+  deleteQuoteOrMaterial: (id: string) =>
+    apiClient.delete<any, { success: boolean; message: string }>(`/writing/quotes-materials/${id}`),
+  
+  aiSearchAndSave: (topic: string, search_types?: string[]) =>
+    apiClient.post<any, { success: boolean; saved_count: number; quotes_saved: number; materials_saved: number }>('/writing/ai-search-quotes-materials', {
+      topic,
+      search_types: search_types || ['quotes', 'materials']
+    }),
 };

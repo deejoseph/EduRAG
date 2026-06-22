@@ -148,17 +148,16 @@ const QuotesAndMaterialsPage: React.FC = () => {
       message.warning('请输入搜索关键词');
       return;
     }
-
+  
     Modal.confirm({
       title: 'AI智能搜索',
-      content: `将使用AI搜索"${searchTopic}"相关的名句和素材,并保存到知识库。这可能需要几分钟时间,是否继续?`,
+      content: `将使用AI搜索“${searchTopic}”相关的名句和素材,并保存到知识库。这可能需要几分钟时间,是否继续?`,
       okText: '开始搜索',
       cancelText: '取消',
       onOk: async () => {
         setAiSearching(true);
         try {
-          // TODO: 调用后端AI搜索API
-          // await writingApi.aiSearchAndSave(searchTopic);
+          await writingApi.aiSearchAndSave(searchTopic);
           message.success('AI搜索完成,新内容已保存到知识库');
           loadLearningStats();
           // 重新搜索以显示新内容
@@ -180,7 +179,7 @@ const QuotesAndMaterialsPage: React.FC = () => {
   // 标记为已学习
   const handleMarkAsLearned = async (id: string, type: 'quote' | 'material') => {
     try {
-      // TODO: 调用后端API标记已学习
+      // TODO: 调用后端API标记已学习(需要实现学习记录表)
       // await writingApi.markQuoteOrMaterialLearned(id, type);
       
       if (type === 'quote') {
@@ -219,8 +218,14 @@ const QuotesAndMaterialsPage: React.FC = () => {
     try {
       const values = await editForm.validateFields();
       
-      // TODO: 调用后端API保存编辑
-      // await writingApi.updateQuoteOrMaterial(editingItem!.id, values);
+      if (!editingItem) return;
+      
+      const updateData: any = {
+        type: activeTab === 'quotes' ? 'quote' : 'material',
+        ...values,
+      };
+      
+      await writingApi.updateQuoteOrMaterial(editingItem.id, updateData);
       
       message.success('修改成功');
       setEditModalVisible(false);
@@ -241,8 +246,7 @@ const QuotesAndMaterialsPage: React.FC = () => {
   // 删除
   const handleDelete = async (id: string, type: 'quote' | 'material') => {
     try {
-      // TODO: 调用后端API删除
-      // await writingApi.deleteQuoteOrMaterial(id, type);
+      await writingApi.deleteQuoteOrMaterial(id);
       
       message.success('删除成功');
       
