@@ -753,6 +753,15 @@ const PodcastPage: React.FC = () => {
     message.success('开始下载完整音频');
   };
 
+  // 下载单个分段音频
+  const handleDownloadSegmentAudio = (index: number, audioUrl: string) => {
+    const link = document.createElement('a');
+    link.href = audioUrl;
+    link.download = `podcast_segment_${String(index + 1).padStart(2, '0')}_${new Date().getTime()}.wav`;
+    link.click();
+    message.success(`开始下载第 ${index + 1} 段音频`);
+  };
+
   // 获取阶段标签颜色
   const getStageColor = (stage: string) => {
     const colors: Record<string, string> = {
@@ -1664,13 +1673,23 @@ const PodcastPage: React.FC = () => {
                         </Button>
 
                         {segment.status === 'completed' && segment.audio_url && (
-                          <Button
-                            size="small"
-                            icon={currentPlayingIndex === index ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-                            onClick={() => handlePlayAudio(index, segment.audio_url!)}
-                          >
-                            {currentPlayingIndex === index ? '暂停' : '试听'}
-                          </Button>
+                          <Space size="small">
+                            <Button
+                              size="small"
+                              icon={currentPlayingIndex === index ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+                              onClick={() => handlePlayAudio(index, segment.audio_url!)}
+                            >
+                              {currentPlayingIndex === index ? '暂停' : '试听'}
+                            </Button>
+                            
+                            <Button
+                              size="small"
+                              icon={<DownloadOutlined />}
+                              onClick={() => handleDownloadSegmentAudio(index, segment.audio_url!)}
+                            >
+                              下载
+                            </Button>
+                          </Space>
                         )}
                       </Space>
                     </Space>
@@ -1692,6 +1711,33 @@ const PodcastPage: React.FC = () => {
               <Text type="secondary" style={{ fontSize: 12 }}>
                 已完成: {audioSegments.filter(s => s.status === 'completed').length} / {audioSegments.length}
               </Text>
+              
+              {/* 批量操作按钮 */}
+              {!ttsGenerating && audioSegments.some(s => s.status === 'completed') && (
+                <Space style={{ marginTop: 12 }}>
+                  <Button
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={handleDownloadFullAudio}
+                    disabled={!fullAudioUrl && !audioSegments.some(s => s.status === 'completed' && s.audio_url)}
+                  >
+                    下载完整合并音频
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      // 批量下载所有分段
+                      const completedSegments = audioSegments.filter(s => s.status === 'completed' && s.audio_url);
+                      completedSegments.forEach((s, idx) => {
+                        setTimeout(() => handleDownloadSegmentAudio(audioSegments.indexOf(s), s.audio_url!), idx * 500);
+                      });
+                      message.success(`开始批量下载 ${completedSegments.length} 个分段音频`);
+                    }}
+                  >
+                    批量下载所有分段
+                  </Button>
+                </Space>
+              )}
             </div>
           )}
         </div>
