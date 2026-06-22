@@ -313,8 +313,8 @@ const PodcastPage: React.FC = () => {
     }
   };
 
-  // 添加到RAG知识库
-  const handleAddToRag = async (scriptId: string) => {
+  // 添加文案到RAG知识库
+  const handleAddScriptToRag = async (scriptId: string) => {
     Modal.confirm({
       title: '确认加入RAG知识库？',
       content: '将该播客文案存入RAG知识库，用于后续AI生成参考',
@@ -1368,7 +1368,7 @@ const PodcastPage: React.FC = () => {
                       <Button 
                         type="link" 
                         size="small"
-                        onClick={() => handleAddToRag(record.script_id)}
+                        onClick={() => handleAddScriptToRag(record.script_id)}
                       >
                         加入
                       </Button>
