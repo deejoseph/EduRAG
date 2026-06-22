@@ -224,6 +224,18 @@ const PodcastPage: React.FC = () => {
     });
   };
 
+  // 更新文案状态
+  const handleUpdateScriptStatus = async (scriptId: string, newStatus: 'draft' | 'completed' | 'archived') => {
+    try {
+      await writingApi.updatePodcastScriptStatus(scriptId, newStatus);
+      message.success(`文案已标记为${newStatus === 'completed' ? '完成' : newStatus === 'draft' ? '草稿' : '归档'}`);
+      loadScripts(); // 刷新列表
+    } catch (error) {
+      console.error('更新文案状态失败:', error);
+      message.error('更新状态失败');
+    }
+  };
+
   useEffect(() => {
     loadMaterials();
     loadScripts(); // 加载文案列表
@@ -1111,6 +1123,15 @@ const PodcastPage: React.FC = () => {
                     >
                       打开
                     </Button>,
+                    script.status !== 'completed' && (
+                      <Button 
+                        type="link" 
+                        style={{ color: '#52c41a' }}
+                        onClick={() => handleUpdateScriptStatus(script.script_id, 'completed')}
+                      >
+                        标记为完成
+                      </Button>
+                    ),
                     <Button 
                       type="link" 
                       icon={<CopyOutlined />}

@@ -1993,3 +1993,81 @@ def _format_rfc2822_date(date_str):
     except:
         # 失败时返回当前时间
         return email.utils.format_datetime(datetime.now())
+
+
+@writing_bp.route('/podcast-scripts/<script_id>/status', methods=['PUT'])
+def update_podcast_script_status(script_id: str):
+    """
+    更新播客文案的状态（draft/completed/archived）
+    
+    路径参数：
+    - script_id: 文案ID
+    
+    请求体：
+    {
+        "status": "completed"  // draft, completed, 或 archived
+    }
+    
+    响应体：
+    {
+        "success": true,
+        "message": "状态已更新",
+        "new_status": "completed"
+    }
+    """
+    try:
+        from flask import current_app
+        app_config = current_app.config.get('edurag', {})
+        db = app_config.get('db')
+        
+        if not db:
+            return error_response("数据库未初始化", 500)
+        
+        # 获取新状态
+        data = request.get_json()
+        new_status = data.get('status')
+        
+        if new_status not in ['draft', 'completed', 'archived']:
+            return error_response(f"无效的状态值: {new_status}，必须是 draft/completed/archived 之一", 400)
+        
+        # 检查集合是否存在
+        if not db.collection_exists('podcast_scripts'):
+            return error_response(f"文案 {script_id} 不存在", 404)
+        
+        # 查询指定ID的文案
+        collection = db.get_collection('podcast_scripts')
+        results = collection.get(
+            where={'script_id': script_id},
+            include=['metadatas', 'ids']
+        )
+        
+        if not results['metadatas']:
+            return error_response(f"文案 {script_id} 不存在", 404)
+        
+        # 获取当前元数据和ID
+        metadata = results['metadatas'][0]
+        doc_id = results['ids'][0]
+        
+        # 更新状态和时间戳
+        metadata['status'] = new_status
+        metadata['updated_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # ChromaDB不支持直接更新，需要删除后重新添加
+        collection.delete(ids=[doc_id])
+        collection.add(
+            ids=[doc_id],
+            documents=[metadata.get('content', '')],
+            metadatas=[metadata]
+        )
+        
+        logger.info(f"✅ 播客文案状态已更新: {script_id} -> {new_status}")
+        
+        return success_response({
+            'message': '状态已更新',
+            'new_status': new_status,
+            'script_id': script_id
+        })
+    
+    except Exception as e:
+        logger.error(f"更新文案状态失败: {e}", exc_info=True)
+        return error_response(f"服务端错误: {e}", 500)

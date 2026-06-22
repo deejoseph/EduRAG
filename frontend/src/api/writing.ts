@@ -174,6 +174,13 @@ export const writingApi = {
     );
   },
 
+  // 更新播客文案状态
+  updatePodcastScriptStatus: (scriptId: string, status: 'draft' | 'completed' | 'archived') =>
+    apiClient.put<any, { success: boolean; message: string; new_status: string; script_id: string }>(
+      `/writing/podcast-scripts/${scriptId}/status`,
+      { status }
+    ),
+
   generatePodcastScript: (params: GeneratePodcastRequest) =>
     apiClient.post<any, { success: boolean; script: string; ai_model: string; materials_count: number; script_metadata?: any }>('/writing/podcast-generate', params),
 
