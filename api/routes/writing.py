@@ -1972,12 +1972,12 @@ def _generate_rss_xml(script_list):
     rss_header = '''<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>EduRAG 播客精选</title>
-    <link>https://edurang.example.com</link>
-    <description>基于AI生成的高考作文范文播客，提供高质量的语文学习素材。</description>
+    <title>30分钟作文实战</title>
+    <link>https://dee422.github.io</link>
+    <description>《30分钟作文实战》是一档面向高中生的作文训练播客。依托EduRAG AI作文训练系统，从审题分析、构思提纲、写作辅助到写作评估，帮助害怕写作文的学生建立系统化写作方法，通过短期强化训练，实现30分钟完成高质量考场作文的目标。</description>
     <language>zh-cn</language>
     <itunes:author>EduRAG团队</itunes:author>
-    <itunes:summary>这是一个专注于高中语文教育的播客，通过AI技术生成优质作文范文，帮助学生提升写作能力。</itunes:summary>
+    <itunes:summary>《30分钟作文实战》是一档面向高中生的作文训练播客。依托EduRAG AI作文训练系统，从审题分析、构思提纲、写作辅助到写作评估，帮助害怕写作文的学生建立系统化写作方法，通过短期强化训练，实现30分钟完成高质量考场作文的目标。</itunes:summary>
     <itunes:explicit>no</itunes:explicit>
     <itunes:image href="https://edurang.example.com/podcast-cover.png"/>
     <itunes:category text="Education">
