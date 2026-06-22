@@ -221,8 +221,8 @@ class ChineseWritingTrainer:
             包含结果和模型信息的字典
         """
         try:
-            # 创建独立的LLM客户端实例
-            llm = OllamaClient(model=model_name)
+            # 创建独立的LLM客户端实例，设置较长超时时间（1小时）支持长文本生成
+            llm = OllamaClient(model=model_name, timeout=3600)
             rag = RAGPipeline(
                 db=self.db,
                 llm=llm,
