@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Input, Button, Alert, Card, Collapse, Tag, message } from 'antd';
-import { ClockCircleOutlined, SendOutlined } from '@ant-design/icons';
+import { Input, Button, Alert, Card, Collapse, Tag, message, Space, Typography } from 'antd';
+import { ClockCircleOutlined, SendOutlined, SoundOutlined } from '@ant-design/icons';
 import { usePracticeStore } from '../../store/practiceStore';
 import { practiceApi } from '../../api/practice';
+import { writingApi } from '../../api/writing';
 import AnswerDisplay from '../../components/writing/AnswerDisplay';
 import LoadingOverlay from '../../components/common/LoadingOverlay';
+
+const { Text } = Typography;
 
 const OutlinePhase: React.FC = () => {
   const {
@@ -52,6 +55,27 @@ const OutlinePhase: React.FC = () => {
       // handled
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 导出到播客模块
+  const handleExportToPodcast = async () => {
+    if (!phase?.ai_feedback) {
+      message.warning('请先提交提纲，等待AI反馈后再导出');
+      return;
+    }
+    
+    try {
+      const response = await writingApi.exportToPodcast({
+        stage: 'outline',
+        topic: topic || '未知题目',
+        content: phase.ai_feedback,
+        ai_model: 'qwen3:8b',
+      });
+      message.success(`✅ 已导出到播客模块：${response.material_id}`);
+    } catch (error) {
+      console.error('导出失败:', error);
+      message.error('导出失败');
     }
   };
 
@@ -131,7 +155,26 @@ const OutlinePhase: React.FC = () => {
       </Card>
 
       {submitted && (
-        <AnswerDisplay content={phase?.ai_feedback || null} title="AI 提纲对比" />
+        <div>
+          <AnswerDisplay content={phase?.ai_feedback || null} title="AI 提纲对比" />
+          
+          {/* 导出到播客按钮 */}
+          <Card size="small" style={{ marginTop: 16 }}>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>🎙️ 播客素材生成</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                将AI的提纲对比分析转换为播客文案，方便后续生成语音复习
+              </Text>
+              <Button
+                icon={<SoundOutlined />}
+                onClick={handleExportToPodcast}
+                disabled={!phase?.ai_feedback}
+              >
+                生成播客素材
+              </Button>
+            </Space>
+          </Card>
+        </div>
       )}
     </LoadingOverlay>
   );

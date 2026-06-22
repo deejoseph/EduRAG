@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Form, Input, Select, Checkbox, Button, message, Alert } from 'antd';
-import { TrophyOutlined, BookOutlined } from '@ant-design/icons';
+import { Form, Input, Select, Checkbox, Button, message, Alert, Card, Space, Typography } from 'antd';
+import { TrophyOutlined, BookOutlined, SoundOutlined } from '@ant-design/icons';
 import { useWritingStore } from '../../store/writingStore';
 import { writingApi } from '../../api/writing';
 import { addToPortfolio } from '../../api/portfolio';
@@ -11,6 +11,8 @@ import {
 import AnswerDisplay from '../../components/writing/AnswerDisplay';
 import ReferencePanel from '../../components/writing/ReferencePanel';
 import LoadingOverlay from '../../components/common/LoadingOverlay';
+
+const { Text } = Typography;
 
 const EssayEval: React.FC = () => {
   const {
@@ -76,12 +78,31 @@ const EssayEval: React.FC = () => {
         ai_feedback: evaluationResult || undefined,
         references: evaluationRefs || undefined,
         score: evaluationResult ? extractScore(evaluationResult) : undefined,
-        evaluation_scores: evaluationResult ? extractDimensionScores(evaluationResult) : undefined,
       });
-      message.success('已添加到作品集！');
+      message.success('✅ 已添加到作品集');
     } catch (error) {
-      message.error('添加失败，请重试');
-      console.error(error);
+      console.error('添加失败:', error);
+    }
+  };
+
+  // 导出到播客模块
+  const handleExportToPodcast = async () => {
+    if (!evaluationResult) {
+      message.warning('请先生成评估报告');
+      return;
+    }
+    
+    try {
+      const response = await writingApi.exportToPodcast({
+        stage: 'evaluation',
+        topic: topic || '未知题目',
+        content: evaluationResult,
+        ai_model: 'qwen3:8b',
+      });
+      message.success(`✅ 已导出到播客模块：${response.material_id}`);
+    } catch (error) {
+      console.error('导出失败:', error);
+      message.error('导出失败');
     }
   };
 
@@ -89,12 +110,6 @@ const EssayEval: React.FC = () => {
   const extractScore = (text: string): number | undefined => {
     const match = text.match(/总分[：:]\s*(\d+)/);
     return match ? parseInt(match[1]) : undefined;
-  };
-
-  const extractDimensionScores = (_text: string) => {
-    // 这里可以根据实际 AI 返回格式进行解析
-    // 暂时返回 undefined，后续可以完善
-    return undefined;
   };
 
   return (
@@ -156,9 +171,27 @@ const EssayEval: React.FC = () => {
             onClick={handleAddToPortfolio}
             block
             size="large"
+            style={{ marginBottom: 12 }}
           >
             添加到作品集
           </Button>
+          
+          {/* 导出到播客 */}
+          <Card size="small">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>🎙️ 播客素材生成</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                将AI评估报告转换为播客文案，方便后续生成语音复习
+              </Text>
+              <Button
+                icon={<SoundOutlined />}
+                onClick={handleExportToPodcast}
+                disabled={!evaluationResult}
+              >
+                生成播客素材
+              </Button>
+            </Space>
+          </Card>
         </div>
       )}
     </LoadingOverlay>
