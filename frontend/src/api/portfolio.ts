@@ -11,7 +11,7 @@ import type {
 } from '../types/portfolio';
 
 const api = axios.create({
-  baseURL: '/portfolio',
+  baseURL: 'http://localhost:5000/portfolio',
   timeout: 30000,
 });
 

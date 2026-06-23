@@ -4,10 +4,12 @@ import {
   CheckCircleOutlined, CloseCircleOutlined,
   ThunderboltOutlined, DatabaseOutlined, ReloadOutlined,
   DeleteOutlined, LineChartOutlined, SwapOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
 import { healthApi, searchApi } from '../../api/search';
 import { resetPortfolio } from '../../api/portfolio';
 import { practiceApi } from '../../api/practice';
+import { backupDatabase, listBackups, deleteBackup, exportConversation } from '../../api/backup';
 import type { HealthResponse, StatsResponse } from '../../types/api';
 
 const { Text, Title } = Typography;
@@ -23,6 +25,12 @@ const Settings: React.FC = () => {
   const [availableModels, setAvailableModels] = useState<Array<{value: string; label: string}>>([]);
   const [modelLoading, setModelLoading] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
+
+  // 备份相关状态
+  const [backups, setBackups] = useState<Array<{name: string; size_mb: number; created_at: string}>>([]);
+  const [loadingBackups, setLoadingBackups] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -79,7 +87,62 @@ const Settings: React.FC = () => {
   useEffect(() => {
     fetchData();
     fetchModelInfo();
+    loadBackups();  // 新增：加载备份列表
   }, []);
+
+  // 加载备份列表
+  const loadBackups = async () => {
+    try {
+      setLoadingBackups(true);
+      const res = await listBackups();
+      setBackups(res.backups.slice(0, 5)); // 只显示最近5个
+    } catch (error) {
+      console.error('加载备份列表失败:', error);
+    } finally {
+      setLoadingBackups(false);
+    }
+  };
+
+  // 备份数据库
+  const handleBackupDatabase = async () => {
+    try {
+      setBackingUp(true);
+      const res = await backupDatabase();
+      message.success(`备份成功！大小: ${res.size_mb.toFixed(2)} MB`);
+      await loadBackups(); // 刷新备份列表
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.error || '备份失败';
+      message.error(errorMsg);
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
+  // 导出对话记录
+  const handleExportConversation = async () => {
+    try {
+      setExporting(true);
+      await exportConversation(undefined, 'markdown');
+      message.success('对话记录已导出，请查看下载文件夹');
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.error || '导出失败';
+      message.error(errorMsg);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // 删除备份
+  const handleDeleteBackup = async (backupName: string) => {
+    try {
+      await deleteBackup(backupName);
+      message.success('备份已删除');
+      await loadBackups();
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.error || '删除失败';
+      message.error(errorMsg);
+    }
+  };
 
   // 重置作品集
   const handleResetPortfolio = async () => {
@@ -254,6 +317,93 @@ const Settings: React.FC = () => {
                 </Button>
               </Popconfirm>
             </Space>
+          </Space>
+        </Card>
+
+        {/* 数据备份与导出 */}
+        <Card title="数据备份与导出" style={{ marginTop: 16 }}>
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            {/* 备份数据库 */}
+            <div>
+              <Text strong>备份知识库</Text>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                备份 ChromaDB 向量数据库到 backup 目录，保留最近5个备份
+              </Text>
+              <Button
+                type="primary"
+                icon={<DatabaseOutlined />}
+                onClick={handleBackupDatabase}
+                loading={backingUp}
+              >
+                立即备份
+              </Button>
+            </div>
+
+            <Divider style={{ margin: '12px 0' }} />
+
+            {/* 导出对话记录 */}
+            <div>
+              <Text strong>导出对话记录</Text>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                导出 Qoder 对话历史为 Markdown 格式，可用于写书或归档
+              </Text>
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={handleExportConversation}
+                loading={exporting}
+              >
+                导出为 Markdown
+              </Button>
+            </div>
+
+            <Divider style={{ margin: '12px 0' }} />
+
+            {/* 备份列表 */}
+            <div>
+              <Text strong>历史备份</Text>
+              <Spin spinning={loadingBackups}>
+                {backups.length === 0 ? (
+                  <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                    暂无备份
+                  </Text>
+                ) : (
+                  <div style={{ marginTop: 8 }}>
+                    {backups.map((backup) => (
+                      <div
+                        key={backup.name}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '8px 12px',
+                          background: '#f5f5f5',
+                          borderRadius: 4,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <div>
+                          <Text>{backup.name}</Text>
+                          <br />
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {backup.size_mb.toFixed(2)} MB · {new Date(backup.created_at).toLocaleString('zh-CN')}
+                          </Text>
+                        </div>
+                        <Popconfirm
+                          title="确定删除此备份？"
+                          onConfirm={() => handleDeleteBackup(backup.name)}
+                          okText="删除"
+                          cancelText="取消"
+                        >
+                          <Button danger size="small" icon={<DeleteOutlined />}>
+                            删除
+                          </Button>
+                        </Popconfirm>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Spin>
+            </div>
           </Space>
         </Card>
       </Spin>

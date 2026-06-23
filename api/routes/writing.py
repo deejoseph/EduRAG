@@ -4,8 +4,11 @@
 支持多AI并行生成和播客素材导出
 """
 
+import json
 import logging
+import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import Blueprint, request, jsonify, current_app
 from typing import List, Optional
@@ -41,6 +44,25 @@ def success_response(data: dict):
         'success': True,
         **data,
     })
+
+
+def _record_practice(topic_title: str):
+    """记录引导练习次数（Writing API 调用）"""
+    try:
+        practice_log_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'practice_logs')
+        os.makedirs(practice_log_dir, exist_ok=True)
+        log_file = os.path.join(practice_log_dir, 'guided_practice.jsonl')
+        
+        record = {
+            'topic_title': topic_title,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'type': 'guided'  # 引导练习
+        }
+        
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+    except Exception as e:
+        logger.warning(f"记录引导练习失败: {e}")
 
 
 def _extract_search_params(data: dict):
@@ -126,6 +148,9 @@ def analyze():
             }
             for doc, meta in zip(result['retrieved_docs'], result['metadatas'])
         ]
+
+        # 记录引导练习次数
+        _record_practice(topic)
 
         return success_response({
             'answer': result['answer'],

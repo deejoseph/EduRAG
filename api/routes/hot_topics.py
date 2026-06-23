@@ -1404,45 +1404,69 @@ def get_favorites():
     获取收藏的热点话题列表（题库）
     
     Query Params:
-        sort_by: 排序方式（created_at/title/relevance_score）
+        sort_by: 排序方式（created_at/title/relevance_score/practice_count）
     
     Returns:
-        收藏列表，包含每个题目在作品集中的练习次数
+        收藏列表，包含每个题目的引导练习次数和强化训练次数
     """
     import glob
     
     favorites = _load_favorites()
     sort_by = request.args.get('sort_by', 'favorited_at')
     
-    # 统计每个题目在作品集中的练习次数
-    portfolio_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'portfolio')
-    practice_count_map = {}
+    # 1. 统计引导练习次数（从 writing.py 的日志文件）
+    guided_practice_log = os.path.join(
+        os.path.dirname(__file__), '..', '..', 'data', 'practice_logs', 'guided_practice.jsonl'
+    )
+    guided_count_map = {}
     
-    if os.path.exists(portfolio_dir):
-        # 遍历所有作品集文件
-        for file_path in glob.glob(os.path.join(portfolio_dir, '*.json')):
-            try:
+    if os.path.exists(guided_practice_log):
+        try:
+            with open(guided_practice_log, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():
+                        record = json.loads(line)
+                        topic_title = record.get('topic_title', '')
+                        if topic_title:
+                            guided_count_map[topic_title] = guided_count_map.get(topic_title, 0) + 1
+        except Exception as e:
+            logger.warning(f"读取引导练习日志失败: {e}")
+    
+    # 2. 统计强化训练次数（从 practice sessions）
+    practice_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'practice_records')
+    intensive_count_map = {}
+    
+    if os.path.exists(practice_dir):
+        try:
+            for file_path in glob.glob(os.path.join(practice_dir, '*.json')):
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    portfolio_item = json.load(f)
-                    # 检查是否有topic_title字段
-                    topic_title = portfolio_item.get('topic_title', '')
-                    if topic_title:
-                        practice_count_map[topic_title] = practice_count_map.get(topic_title, 0) + 1
-            except Exception:
-                continue
+                    session = json.load(f)
+                    topic = session.get('topic', '')
+                    
+                    # 统计所有已创建的训练会话（不限制完成状态）
+                    if topic:
+                        intensive_count_map[topic] = intensive_count_map.get(topic, 0) + 1
+        except Exception as e:
+            logger.warning(f"读取强化训练记录失败: {e}")
     
-    # RAG 热门主题类别名集合（覆盖 search.py 定义和实际 API 返回的所有名称）
+    # RAG 热门主题类别名集合
     rag_category_names = {
         '家国情怀', '责任担当', '文化传承', '科技创新',
         '生态文明', '青年成长', '人生价值', '时代精神',
         '青年担当', '绿色成长', '科技伦理', '核心价值',
     }
     
-    # 添加练习次数，并根据类别动态标记 RAG 来源
+    # 添加两种练习次数
     for fav in favorites:
         title = fav.get('title', '')
-        fav['practice_count'] = practice_count_map.get(title, 0)
-        # 如果题目的类别匹配 RAG 热门主题类别，标记为 rag
+        essay_prompt = fav.get('essay_prompt', '')  # 获取 essay_prompt 字段
+        
+        # 匹配 title 或 essay_prompt
+        fav['guided_practice_count'] = guided_count_map.get(title, 0) + guided_count_map.get(essay_prompt, 0)
+        fav['intensive_practice_count'] = intensive_count_map.get(title, 0) + intensive_count_map.get(essay_prompt, 0)
+        fav['practice_count'] = fav['guided_practice_count'] + fav['intensive_practice_count']  # 总次数
+        
+        # 标记来源
         fav_category = fav.get('category', '')
         if fav_category in rag_category_names:
             fav['source'] = 'rag'
@@ -1464,4 +1488,139 @@ def get_favorites():
         'success': True,
         'topics': favorites,
         'total': len(favorites)
+    })
+
+
+@hot_topics_bp.route('/favorites/combined', methods=['GET'])
+def get_combined_favorites():
+    """
+    获取合并的题库列表（热点话题 + 高考作文题目）
+    
+    Query Params:
+        sort_by: 排序方式（created_at/title/relevance_score）
+        include_essays: 是否包含高考作文（默认 true）
+    
+    Returns:
+        合并后的题库列表，每个项目包含 source_type 字段标识来源
+    """
+    from core.db_manager import EduRAGDatabase
+    
+    # 1. 获取热点话题收藏
+    favorites = _load_favorites()
+    
+    # 标记热点话题来源
+    rag_category_names = {
+        '家国情怀', '责任担当', '文化传承', '科技创新',
+        '生态文明', '青年成长', '人生价值', '时代精神',
+        '青年担当', '绿色成长', '科技伦理', '核心价值',
+    }
+    
+    for fav in favorites:
+        fav_category = fav.get('category', '')
+        if fav_category in rag_category_names:
+            fav['source_type'] = 'rag'
+        else:
+            fav['source_type'] = 'non_rag'
+        fav.setdefault('practice_count', 0)
+    
+    combined_items = list(favorites)
+    
+    # 2. 获取高考作文题目（可选）
+    include_essays = request.args.get('include_essays', 'true').lower() == 'true'
+    
+    if include_essays:
+        try:
+            db = current_app.config['edurag']['db']
+            collection_name = 'chinese_essays'
+            
+            if db.collection_exists(collection_name):
+                collection = db.get_collection(collection_name)
+                
+                # 获取所有作文题目（限制数量避免过多）
+                result = collection.get(limit=100)
+                
+                essays = []
+                seen_titles = set()
+                
+                for i, doc_id in enumerate(result['ids']):
+                    metadata = result['metadatas'][i] if result['metadatas'] else {}
+                    document = result['documents'][i] if result['documents'] else ''
+                    
+                    # 提取标题
+                    title = metadata.get('title', f'高考作文_{metadata.get("year", "未知")}')
+                    
+                    # 去重
+                    if title in seen_titles:
+                        continue
+                    seen_titles.add(title)
+                    
+                    # 构建统一格式
+                    essay_item = {
+                        'title': title,
+                        'category': '高考真题',
+                        'keywords': [metadata.get('exam_region', ''), metadata.get('year', '')],
+                        'news_summary': f'{metadata.get("year", "年")}{metadata.get("exam_region", "")}高考作文题目',
+                        'essay_prompt': document[:500] + '...' if len(document) > 500 else document,
+                        'writing_angles': ['从材料出发，结合自身体验', '多角度思考社会现象'],
+                        'reference_materials': ['关注历年高考优秀作文'],
+                        'difficulty': '中等',
+                        'relevance_score': 9,
+                        'favorited_at': metadata.get('imported_at', ''),
+                        'practice_count': 0,
+                        'source_type': 'essay',
+                        'doc_id': doc_id,
+                        'year': metadata.get('year', ''),
+                        'region': metadata.get('exam_region', ''),
+                    }
+                    essays.append(essay_item)
+                
+                combined_items.extend(essays)
+                logger.info(f"加载了 {len(essays)} 个高考作文题目")
+        
+        except Exception as e:
+            logger.error(f"加载高考作文题目失败: {e}")
+    
+    # 3. 统计练习次数（仅对热点话题有效）
+    portfolio_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'portfolio')
+    practice_count_map = {}
+    
+    if os.path.exists(portfolio_dir):
+        import glob
+        for file_path in glob.glob(os.path.join(portfolio_dir, '*.json')):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    portfolio_item = json.load(f)
+                    topic_title = portfolio_item.get('topic_title', '')
+                    if topic_title:
+                        practice_count_map[topic_title] = practice_count_map.get(topic_title, 0) + 1
+            except Exception:
+                continue
+    
+    # 更新练习次数
+    for item in combined_items:
+        if item.get('source_type') in ['rag', 'non_rag']:
+            item['practice_count'] = practice_count_map.get(item.get('title', ''), 0)
+    
+    # 4. 排序
+    sort_by = request.args.get('sort_by', 'favorited_at')
+    
+    # RAG 优先，然后是 essay，最后是 non_rag
+    source_priority = {'rag': 0, 'essay': 1, 'non_rag': 2}
+    get_priority = lambda x: source_priority.get(x.get('source_type', 'non_rag'), 2)
+    
+    if sort_by == 'title':
+        combined_items.sort(key=lambda x: (get_priority(x), x.get('title', '')))
+    elif sort_by == 'relevance_score':
+        combined_items.sort(key=lambda x: (get_priority(x), -x.get('relevance_score', 0)))
+    elif sort_by == 'practice_count':
+        combined_items.sort(key=lambda x: (get_priority(x), -x.get('practice_count', 0)))
+    else:  # favorited_at
+        combined_items.sort(key=lambda x: (get_priority(x), x.get('favorited_at', '')))
+    
+    return jsonify({
+        'success': True,
+        'topics': combined_items,
+        'total': len(combined_items),
+        'essay_count': sum(1 for t in combined_items if t.get('source_type') == 'essay'),
+        'hot_topic_count': sum(1 for t in combined_items if t.get('source_type') in ['rag', 'non_rag']),
     })

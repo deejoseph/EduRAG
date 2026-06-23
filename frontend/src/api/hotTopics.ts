@@ -11,7 +11,7 @@ import type {
 } from '../types/hotTopics';
 
 const api = axios.create({
-  baseURL: '/hot-topics',
+  baseURL: 'http://localhost:5000/hot-topics',
   timeout: 180000, // LLM 调用可能需要较长时间，增加到3分钟
 });
 
@@ -101,7 +101,7 @@ export const getFavorites = async (sortBy: string = 'favorited_at'): Promise<{
 
 // 获取知识库热门主题统计（用于命题热点的历史主题搜索）
 const searchApi = axios.create({
-  baseURL: '/search',
+  baseURL: 'http://localhost:5000/search',
   timeout: 30000,
 });
 
@@ -117,5 +117,17 @@ export const getHotTopicsStats = async (): Promise<{
   total_topics: number;
 }> => {
   const response = await searchApi.get('/hot-topics');
+  return response.data;
+};
+
+// 获取合并的题库列表（热点话题 + 高考作文）
+export const getCombinedFavorites = async (sortBy: string = 'favorited_at'): Promise<{
+  success: boolean;
+  topics: any[];
+  total: number;
+  essay_count: number;
+  hot_topic_count: number;
+}> => {
+  const response = await api.get(`/favorites/combined?sort_by=${sortBy}&include_essays=true`);
   return response.data;
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Steps, Card, Button, Space, Form, Input, Select, Typography, Tag, message, Badge, List, Popconfirm } from 'antd';
+import { Steps, Card, Button, Space, Form, Input, Select, Typography, Tag, message, Badge, List, Popconfirm, Pagination } from 'antd';
 import {
   ThunderboltOutlined,
   ClockCircleOutlined,
@@ -47,6 +47,10 @@ const PracticePage: React.FC = () => {
   const [favorites, setFavorites] = useState<any[]>([]);
   const [favoritesLoading, setFavoritesLoading] = useState(false);
   
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  
   // 加载题库列表
   useEffect(() => {
     loadFavorites();
@@ -55,7 +59,8 @@ const PracticePage: React.FC = () => {
   const loadFavorites = async () => {
     setFavoritesLoading(true);
     try {
-      const res = await getFavorites('practice_count');
+      const res = await getFavorites('favorited_at');
+      console.log('API 返回数据:', res.topics?.slice(0, 2)); // 打印前2个题目调试
       setFavorites(res.topics);
     } catch (error) {
       console.error('加载题库失败:', error);
@@ -148,10 +153,11 @@ const PracticePage: React.FC = () => {
               {favorites.length === 0 ? (
                 <Text type="secondary">暂无收藏的题目，请先到"命题热点"或"知识检索"页面收藏感兴趣的话题</Text>
               ) : (
-                <List
-                  size="small"
-                  dataSource={favorites}
-                  renderItem={(item) => (
+                <>
+                  <List
+                    size="small"
+                    dataSource={favorites.slice((currentPage - 1) * pageSize, currentPage * pageSize)}
+                    renderItem={(item) => (
                     <List.Item
                       style={{ padding: '8px 0' }}
                       actions={[
@@ -193,13 +199,39 @@ const PracticePage: React.FC = () => {
                         description={
                           <Space size={8}>
                             <Tag style={{ fontSize: 11 }}>{item.category || '未分类'}</Tag>
-                            <Text type="secondary" style={{ fontSize: 11 }}>已练习{item.practice_count || 0}次</Text>
+                            {item.intensive_practice_count > 0 ? (
+                              <Text type="danger" style={{ fontSize: 11 }}>
+                                强化{item.intensive_practice_count}次
+                              </Text>
+                            ) : (
+                              <Text type="secondary" style={{ fontSize: 11 }}>未练习</Text>
+                            )}
                           </Space>
                         }
                       />
                     </List.Item>
                   )}
                 />
+                  
+                  {/* 分页控件 */}
+                  {favorites.length > pageSize && (
+                    <div style={{ marginTop: 16, textAlign: 'center' }}>
+                      <Pagination
+                        current={currentPage}
+                        pageSize={pageSize}
+                        total={favorites.length}
+                        showSizeChanger={false}
+                        showQuickJumper
+                        showTotal={(total) => `共 ${total} 个题目`}
+                        onChange={(page) => {
+                          setCurrentPage(page);
+                          // 滚动到列表顶部
+                          document.querySelector('.ant-list')?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </Card>
             

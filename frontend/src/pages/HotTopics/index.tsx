@@ -12,7 +12,7 @@ import type { TopicCategory, HotTopic } from '../../types/hotTopics';
 import {
   getCategories, searchHotTopics, refreshCache, generateCustomPrompt,
   favoriteTopic, unfavoriteTopic, getFavorites, getHotTopicsStats,
-  favoriteAllTopics,
+  favoriteAllTopics, getCombinedFavorites,
 } from '../../api/hotTopics';
 import MarkdownRenderer from '../../components/common/MarkdownRenderer';
 
@@ -58,9 +58,12 @@ const HotTopicsPage: React.FC = () => {
   
   const loadFavorites = async () => {
     try {
-      const res = await getFavorites();
+      // 使用新的合并接口
+      const res = await getCombinedFavorites();
       setFavorites(res.topics);
       setFavoritedTitles(new Set(res.topics.map(t => t.title)));
+      // 可选：保存统计数据用于UI展示
+      console.log(`题库统计: ${res.hot_topic_count} 个热点话题, ${res.essay_count} 个高考作文`);
     } catch (error) {
       console.error('加载收藏失败:', error);
     }
@@ -559,6 +562,17 @@ const HotTopicsPage: React.FC = () => {
                     onClick={() => handleViewDetail(topic)}
                     extra={
                       <Space size="small">
+                        {/* 来源标识 */}
+                        {topic.source_type === 'essay' && (
+                          <Tag color="purple" style={{ fontSize: 10 }}>高考真题</Tag>
+                        )}
+                        {topic.source_type === 'rag' && (
+                          <Tag color="green" style={{ fontSize: 10 }}>RAG热门</Tag>
+                        )}
+                        {topic.source_type === 'non_rag' && (
+                          <Tag color="blue" style={{ fontSize: 10 }}>自定义</Tag>
+                        )}
+                        
                         <Badge count={topic.relevance_score} style={{ backgroundColor: topic.relevance_score >= 7 ? '#52c41a' : '#faad14' }} overflowCount={10} />
                         <Popconfirm
                           title={isFavorited ? "确定取消收藏？" : "添加到题库？"}
@@ -641,6 +655,15 @@ const HotTopicsPage: React.FC = () => {
                   {selectedTopic.difficulty}
                 </Tag>
                 <Tag>相关度: {selectedTopic.relevance_score}/10</Tag>
+                
+                {/* 高考作文特有信息 */}
+                {selectedTopic.source_type === 'essay' && (
+                  <>
+                    <Tag color="purple">高考真题</Tag>
+                    <Tag>{selectedTopic.year}年</Tag>
+                    <Tag>{selectedTopic.region}</Tag>
+                  </>
+                )}
               </Space>
             </Card>
 

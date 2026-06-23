@@ -244,7 +244,7 @@ export const writingApi = {
     if (params.nfe !== undefined) formData.append('nfe', String(params.nfe));
     if (params.guidance_strength !== undefined) formData.append('guidance_strength', String(params.guidance_strength));
     
-    const ttsUrl = '/writing/podcast-tts';
+    const ttsUrl = 'http://localhost:5000/writing/podcast-tts';
     console.log('[TTS API] 请求URL:', ttsUrl);
     console.log('[TTS API] 当前页面URL:', window.location.href);
     console.log('[TTS API] 开始调用，文本长度:', params.text.length);
@@ -289,7 +289,7 @@ export const writingApi = {
       formData.append('prompt_text', promptText);
     }
     
-    return fetch('/writing/podcast-ref-audios/upload', {
+    return fetch('http://localhost:5000/writing/podcast-ref-audios/upload', {
       method: 'POST',
       body: formData,
     })
