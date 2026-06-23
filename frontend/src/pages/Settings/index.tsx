@@ -9,7 +9,7 @@ import {
 import { healthApi, searchApi } from '../../api/search';
 import { resetPortfolio } from '../../api/portfolio';
 import { practiceApi } from '../../api/practice';
-import { backupDatabase, listBackups, deleteBackup, exportConversation } from '../../api/backup';
+import { backupDatabase, listBackups, deleteBackup, restoreBackup, exportConversation } from '../../api/backup';
 import type { HealthResponse, StatsResponse } from '../../types/api';
 
 const { Text, Title } = Typography;
@@ -27,7 +27,7 @@ const Settings: React.FC = () => {
   const [switchingModel, setSwitchingModel] = useState(false);
 
   // 备份相关状态
-  const [backups, setBackups] = useState<Array<{name: string; size_mb: number; created_at: string}>>([]);
+  const [backups, setBackups] = useState<Array<{name: string; size_mb: number; created_at: string; collections?: Array<{name: string; document_count: number}>; total_collections?: number}>>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -108,7 +108,7 @@ const Settings: React.FC = () => {
     try {
       setBackingUp(true);
       const res = await backupDatabase();
-      message.success(`备份成功！大小: ${res.size_mb.toFixed(2)} MB`);
+      message.success(`备份成功！（包含 ${res.total_collections || 0} 个知识库）大小: ${res.size_mb.toFixed(2)} MB`);
       await loadBackups(); // 刷新备份列表
     } catch (error: any) {
       const errorMsg = error?.response?.data?.error || '备份失败';
@@ -140,6 +140,21 @@ const Settings: React.FC = () => {
       await loadBackups();
     } catch (error: any) {
       const errorMsg = error?.response?.data?.error || '删除失败';
+      message.error(errorMsg);
+    }
+  };
+
+  // 恢复备份
+  const handleRestoreBackup = async (backupName: string) => {
+    try {
+      const res = await restoreBackup(backupName);
+      message.warning({
+        content: `${res.message}。${res.warning || ''}`,
+        duration: 5,
+      });
+      await loadBackups();
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.error || '恢复失败';
       message.error(errorMsg);
     }
   };
@@ -387,17 +402,48 @@ const Settings: React.FC = () => {
                           <Text type="secondary" style={{ fontSize: 12 }}>
                             {backup.size_mb.toFixed(2)} MB · {new Date(backup.created_at).toLocaleString('zh-CN')}
                           </Text>
+                          {backup.total_collections && backup.total_collections > 0 && (
+                            <div style={{ marginTop: 4 }}>
+                              <Text type="success" style={{ fontSize: 12 }}>
+                                包含 {backup.total_collections} 个知识库：
+                              </Text>
+                              <Space size={4} wrap style={{ marginTop: 2 }}>
+                                {backup.collections?.map((col, idx) => (
+                                  <Tag key={idx} color="blue" style={{ fontSize: 11, margin: 0 }}>
+                                    {col.name}: {col.document_count.toLocaleString()}
+                                  </Tag>
+                                ))}
+                              </Space>
+                            </div>
+                          )}
                         </div>
-                        <Popconfirm
-                          title="确定删除此备份？"
-                          onConfirm={() => handleDeleteBackup(backup.name)}
-                          okText="删除"
-                          cancelText="取消"
-                        >
-                          <Button danger size="small" icon={<DeleteOutlined />}>
-                            删除
-                          </Button>
-                        </Popconfirm>
+                        <Space>
+                          <Popconfirm
+                            title="确定要从此备份恢复吗？当前数据将被自动备份。"
+                            description="恢复后需要重启后端服务才能生效"
+                            onConfirm={() => handleRestoreBackup(backup.name)}
+                            okText="恢复"
+                            cancelText="取消"
+                          >
+                            <Button 
+                              type="primary" 
+                              size="small" 
+                              icon={<ReloadOutlined />}
+                            >
+                              恢复
+                            </Button>
+                          </Popconfirm>
+                          <Popconfirm
+                            title="确定删除此备份？"
+                            onConfirm={() => handleDeleteBackup(backup.name)}
+                            okText="删除"
+                            cancelText="取消"
+                          >
+                            <Button danger size="small" icon={<DeleteOutlined />}>
+                              删除
+                            </Button>
+                          </Popconfirm>
+                        </Space>
                       </div>
                     ))}
                   </div>

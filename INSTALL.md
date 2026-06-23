@@ -1,14 +1,17 @@
-# EduRAG 安装指南
+# EduRAG 智能写作助手 - 安装部署指南
 
 > 基于 RAG（检索增强生成）的本地化 K12 教育辅助系统，专注高考语文写作训练。
 
-## 目录
+---
+
+## 📋 目录
 
 - [系统要求](#系统要求)
 - [快速开始](#快速开始)
 - [详细安装步骤](#详细安装步骤)
-- [知识库配置](#知识库配置)
+- [数据恢复](#数据恢复)
 - [常见问题](#常见问题)
+- [故障排除](#故障排除)
 
 ---
 
@@ -19,40 +22,44 @@
 | 组件 | 最低配置 | 推荐配置 |
 |------|---------|---------|
 | CPU | Intel i5 / AMD Ryzen 5 | Intel i7 / AMD Ryzen 7 |
-| 内存 | 8 GB | 16 GB |
-| 硬盘空间 | 20 GB | 50 GB SSD |
-| GPU | 可选（CPU模式较慢） | NVIDIA RTX 3060 (8GB+) |
+| 内存 | 8 GB RAM | 16 GB RAM |
+| 显卡 | NVIDIA GPU (4GB VRAM) | NVIDIA RTX 3070 (8GB VRAM) |
+| 硬盘 | 50 GB 可用空间 | 100 GB SSD |
 
 ### 软件要求
 
-- **操作系统**: Windows 10/11, macOS 10.15+, Linux
-- **Python**: 3.10 - 3.13
-- **Node.js**: 18.x 或更高版本
-- **Ollama**: 最新版本（用于 LLM 推理）
+- **操作系统**: Windows 10/11, Linux, macOS
+- **Python**: 3.10+
+- **Node.js**: 18+ 
+- **Ollama**: 最新版本
+- **Git**: 最新版本
 
 ---
 
 ## 快速开始
 
-### 一键启动（推荐）
+### 方式一：使用一键启动脚本（推荐）
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/your-username/EduRAG.git
+git clone <your-repo-url>
 cd EduRAG
 
-# 2. 双击运行
-start.bat
+# 2. 双击启动脚本
+start.bat  # Windows
+# 或
+./start.sh  # Linux/Mac
 ```
 
-`start.bat` 会自动完成以下操作：
-1. 检查并激活 Python 虚拟环境
-2. 安装后端依赖
-3. 安装前端依赖
-4. 启动 Ollama 服务
-5. 启动 Flask 后端（端口 5000）
-6. 启动 React 前端（端口 3000）
-7. 自动打开浏览器访问 http://localhost:3000
+首次运行时，脚本会自动：
+- 检查并安装依赖
+- 下载 Ollama 模型
+- 启动后端和前端服务
+- 打开浏览器访问 http://localhost:3000
+
+### 方式二：手动安装
+
+详见[详细安装步骤](#详细安装步骤)
 
 ---
 
@@ -61,24 +68,26 @@ start.bat
 ### 步骤 1：克隆项目
 
 ```bash
-git clone https://github.com/your-username/EduRAG.git
+git clone <your-repo-url>
 cd EduRAG
 ```
 
 ### 步骤 2：安装 Python 环境
 
-#### 方式 A：使用 conda（推荐）
+#### 使用 Conda（推荐）
 
 ```bash
-# 创建 conda 环境
-conda create -n pixel_ai python=3.10 -y
-conda activate pixel_ai
+# 创建虚拟环境
+conda create -n edurag python=3.10 -y
 
-# 安装后端依赖
+# 激活环境
+conda activate edurag
+
+# 安装依赖
 pip install -r requirements.txt
 ```
 
-#### 方式 B：使用 venv
+#### 使用 venv
 
 ```bash
 # 创建虚拟环境
@@ -87,14 +96,14 @@ python -m venv venv
 # 激活环境
 # Windows:
 venv\Scripts\activate
-# macOS/Linux:
+# Linux/Mac:
 source venv/bin/activate
 
 # 安装依赖
 pip install -r requirements.txt
 ```
 
-### 步骤 3：安装前端依赖
+### 步骤 3：安装 Node.js 依赖
 
 ```bash
 cd frontend
@@ -104,342 +113,347 @@ cd ..
 
 ### 步骤 4：安装 Ollama
 
-1. 访问 [https://ollama.ai](https://ollama.ai) 下载并安装 Ollama
-2. 启动 Ollama 服务
-3. 拉取默认模型（根据 `config.yaml` 中的配置）：
+1. **下载 Ollama**
+   - 访问 https://ollama.ai
+   - 下载并安装对应系统的版本
 
-```bash
-# 示例：拉取 Qwen3:8b 模型
-ollama pull qwen3:8b
+2. **启动 Ollama**
+   ```bash
+   ollama serve
+   ```
 
-# 或者使用更小的模型（适合低配机器）
-ollama pull qwen2.5:3b
-```
+3. **拉取模型**
+   
+   查看 `config.yaml` 中配置的模型名称，例如：
+   ```yaml
+   llm:
+     model: gemma3:4b
+   ```
+   
+   然后执行：
+   ```bash
+   ollama pull gemma3:4b
+   ```
 
 ### 步骤 5：配置环境变量（可选）
 
-如果从 HuggingFace 下载模型速度慢，可以设置镜像源：
-
-**Windows (PowerShell):**
-```powershell
-$env:HF_ENDPOINT = "https://hf-mirror.com"
-```
-
-**Windows (CMD):**
-```cmd
-set HF_ENDPOINT=https://hf-mirror.com
-```
-
-**macOS/Linux:**
+复制配置文件模板：
 ```bash
-export HF_ENDPOINT=https://hf-mirror.com
+cp config.yaml config.local.yaml
 ```
 
-或者在 `config.yaml` 中配置 embedding 和 reranker 模型路径。
+根据需要修改 `config.local.yaml` 中的配置：
+- LLM 模型
+- Embedding 模型
+- 数据库路径
+- API 端口等
 
 ### 步骤 6：启动服务
 
-#### 方式 A：使用一键启动脚本
+#### 方式 A：使用启动脚本
 
 ```bash
 # Windows
 start.bat
 
-# macOS/Linux
+# Linux/Mac
 chmod +x start.sh
 ./start.sh
 ```
 
 #### 方式 B：手动启动
 
-需要打开三个终端窗口：
+需要打开 **3 个终端窗口**：
 
-**终端 1 - Ollama:**
+**终端 1：Ollama**（如已运行可跳过）
 ```bash
 ollama serve
 ```
 
-**终端 2 - 后端 API:**
+**终端 2：后端 API**
 ```bash
-# Windows
+cd D:\PixelSmile\EduRAG
 python start_backend.py
-
-# 或者
+# 或
 python -m api.app
 ```
 
-**终端 3 - 前端:**
+后端将在 http://localhost:5000 启动
+
+**终端 3：前端**
 ```bash
-cd frontend
+cd D:\PixelSmile\EduRAG\frontend
 npm run dev
 ```
 
-### 步骤 7：访问应用
+前端将在 http://localhost:3000 启动
 
-浏览器打开: http://localhost:3000
+### 步骤 7：验证安装
+
+打开浏览器访问 http://localhost:3000，检查：
+
+- ✅ 首页正常显示
+- ✅ 知识库统计有数据（文档数量 > 0）
+- ✅ 写作训练功能可用
+- ✅ 知识检索功能可用
+- ✅ 模型加载成功（系统设置中查看）
 
 ---
 
-## 知识库配置
+## 数据恢复
 
-EduRAG 支持多种知识库配置方式：
+如果您之前有备份数据，可以按照以下步骤恢复：
 
-### 方式 A：联系作者获取预构建知识库
+### 方法一：使用前端恢复功能（推荐）
 
-如果您想直接使用已构建好的知识库（包含 28000+ 文档片段），请联系作者获取 `data/chromadb` 目录。
+1. **放置备份文件**
+   
+   将备份文件夹复制到项目的 `backup/` 目录下：
+   ```
+   EduRAG/
+   └── backup/
+       └── chroma_db_YYYYMMDD_HHMMSS/  # 您的备份文件夹
+   ```
 
-**联系方式：**
-- GitHub Issues: [提交 Issue](https://github.com/your-username/EduRAG/issues)
-- Email: your-email@example.com
+2. **通过前端恢复**
+   
+   - 访问 http://localhost:3000
+   - 进入"系统设置"页面
+   - 在"数据备份与导出"部分找到"历史备份"
+   - 点击对应备份的"恢复"按钮
+   - 确认恢复操作
+   - **重启后端服务**以使更改生效
 
-获取后，将 `chromadb` 文件夹解压到项目根目录的 `data/` 目录下：
+### 方法二：手动恢复
 
-```
-EduRAG/
-└── data/
-    └── chromadb/      # 预构建的知识库
-        └── chinese_essays/
-```
+1. **停止后端服务**（Ctrl+C）
 
-### 方式 B：自行生成知识库
+2. **备份当前数据**（可选但推荐）
+   ```bash
+   mv data/chroma_db data/chroma_db_old
+   ```
 
-如果您有自己的文档数据，可以按照以下步骤生成知识库：
+3. **复制备份数据**
+   ```bash
+   # 假设备份文件夹是 chroma_db_20260624_025757
+   cp -r backup/chroma_db_20260624_025757/* data/chroma_db/
+   ```
 
-#### 1. 准备文档
+4. **重启后端服务**
+   ```bash
+   python start_backend.py
+   ```
 
-将 PDF、DOCX、TXT、MD 等格式的文档放入以下目录：
+### ⚠️ 重要提示
 
-```
-data/docs/
-├── pdfs/          # PDF 文档
-├── docs/          # DOCX 文档
-├── texts/         # TXT 文档
-└── markdowns/     # MD 文档
-```
-
-或者使用扁平化目录结构（推荐）：
-
-```
-data/docs/
-└── all/           # 所有文档放在一个目录
-    ├── file1.pdf
-    ├── file2.docx
-    └── ...
-```
-
-#### 2. 运行导入脚本
-
-```bash
-# 导入普通文档
-python scripts/import_docs.py
-
-# 导入高考试卷（结构化解析）
-python scripts/import_exam_papers.py
-```
-
-导入脚本会自动：
-- 提取文档内容
-- 智能分块（每块约 500 字）
-- 解析元数据（年份、考区、题型等）
-- 生成向量嵌入
-- 存储到 ChromaDB
-
-#### 3. 验证导入结果
-
-启动后端服务后，访问:
-
-- http://localhost:5000/search/stats - 查看知识库统计
-- http://localhost:5000/search/collections - 查看集合列表
+- **不要**直接把 `backup/` 文件夹放到 `data/` 目录下
+- **必须**将备份内容恢复到 `data/chroma_db/` 目录
+- 恢复后**必须重启后端服务**才能生效
+- 恢复前系统会自动备份当前数据到 `backup/auto_backup_before_restore_XXX`
 
 ---
 
 ## 常见问题
 
-### 1. Ollama 模型下载超时
+### Q1: 启动时提示 "ModuleNotFoundError: No module named 'xxx'"
 
-**问题**: 从 HuggingFace 下载 embedding/reranker 模型时超时
-
-**解决方案**:
+**解决方案**：
 ```bash
-# 设置镜像源
-export HF_ENDPOINT=https://hf-mirror.com
+# 确保在正确的虚拟环境中
+conda activate edurag  # 或 source venv/bin/activate
 
-# 或者使用 start_backend.py 启动（自动设置镜像）
-python start_backend.py
+# 重新安装依赖
+pip install -r requirements.txt
 ```
 
-### 2. 端口被占用
+### Q2: 前端页面刷新出现 404 错误
 
-**问题**: 端口 5000 或 3000 已被其他程序占用
+**原因**：Vite 开发服务器的 SPA 路由问题
 
-**解决方案**:
+**解决方案**：
+- 确保使用最新版本的代码
+- 清除浏览器缓存（Ctrl+F5 强制刷新）
+- 检查后端是否正常运行
+
+### Q3: Ollama 模型下载失败或超时
+
+**解决方案**：
+
+1. **使用镜像源**（中国用户）
+   ```bash
+   # 设置环境变量
+   export OLLAMA_HOST=https://ollama.ai
+   
+   # 或使用国内镜像
+   export OLLAMA_HOST=https://ollama.cnb.cool
+   ```
+
+2. **手动下载模型**
+   ```bash
+   # 先下载小模型测试
+   ollama pull llama2:7b
+   
+   # 再下载需要的模型
+   ollama pull gemma3:4b
+   ```
+
+### Q4: ChromaDB 报错 "embedding dimension mismatch"
+
+**原因**：备份数据的 embedding 维度与当前配置不匹配
+
+**解决方案**：
 ```bash
-# 修改后端端口（config.yaml）
-server:
-  port: 5001
-
-# 修改前端端口（frontend/vite.config.ts）
-server: {
-  port: 3001
-}
+# 重新生成 embedding（耗时较长）
+python scripts/regen_embedding.py
 ```
 
-### 3. CUDA 相关错误
+### Q5: GPU 加速未生效
 
-**问题**: NVIDIA GPU 但无法使用 CUDA
+**检查步骤**：
 
-**解决方案**:
-```bash
-# 确认安装了 CUDA 版本的 PyTorch
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+1. **验证 CUDA 可用性**
+   ```python
+   import torch
+   print(torch.cuda.is_available())  # 应该输出 True
+   print(torch.cuda.get_device_name(0))  # 显示 GPU 名称
+   ```
 
-# 在 config.yaml 中启用 CUDA
-embedding:
-  device: cuda
+2. **检查 config.yaml**
+   ```yaml
+   device: cuda  # 确保设置为 cuda
+   ```
 
-reranker:
-  device: cuda
-```
+3. **验证 PyTorch CUDA 版本**
+   ```bash
+   pip list | grep torch
+   # 应该看到类似：torch 2.5.1+cu121
+   ```
 
-### 4. 中文文件名显示乱码
+### Q6: 备份/恢复功能找不到数据
 
-**问题**: Windows 控制台显示中文文件名为乱码
+**检查清单**：
 
-**解决方案**:
-这是正常的编码问题，不影响实际功能。前端界面会正确显示中文。
-
-### 5. 搜索结果为空
-
-**问题**: 知识检索返回 0 条结果
-
-**可能原因**:
-1. 知识库为空 - 检查是否导入了文档
-2. 相似度阈值过高 - 在 `/search/stats` 查看配置
-3. 集合名称错误 - 默认为 `chinese_essays`
-
-**解决方案**:
-```bash
-# 检查知识库统计
-curl http://localhost:5000/search/stats
-
-# 重新导入文档
-python scripts/import_docs.py
-```
-
-### 6. 内存不足
-
-**问题**: 导入大量文档时内存溢出
-
-**解决方案**:
-1. 减小批量大小（修改 `scripts/import_docs.py` 中的 `batch_size`）
-2. 使用更小的 embedding 模型
-3. 分批导入文档
-
-### 7. 前端白屏
-
-**问题**: 访问 http://localhost:3000 显示空白页面
-
-**解决方案**:
-```bash
-# 检查后端是否启动
-curl http://localhost:5000/health
-
-# 重新启动前端
-cd frontend
-npm run dev
-```
-
-### 8. 文档无法打开
-
-**问题**: 点击"打开原文"按钮返回 404
-
-**解决方案**:
-1. 确认文档文件存在于 `data/docs/all/` 或其他子目录
-2. 检查文件名是否正确（注意中文编码）
-3. 重启后端服务使文件索引更新
+- ✅ 备份文件夹在 `backup/` 目录下
+- ✅ 备份文件夹包含 `chroma.sqlite3` 文件
+- ✅ 恢复后重启了后端服务
+- ✅ 前端页面已刷新
 
 ---
 
-## 开发模式
+## 故障排除
 
-### 后端开发
+### 后端启动失败
 
-```bash
-# 启用调试模式
-export FLASK_DEBUG=1
-python -m api.app
+1. **检查端口占用**
+   ```bash
+   # Windows
+   netstat -ano | findstr ":5000"
+   
+   # Linux/Mac
+   lsof -i :5000
+   ```
 
-# 查看日志
-# 日志输出在控制台实时显示
-```
+2. **杀死占用进程**
+   ```bash
+   # Windows
+   taskkill /F /PID <PID>
+   
+   # Linux/Mac
+   kill -9 <PID>
+   ```
 
-### 前端开发
+3. **查看详细错误日志**
+   ```bash
+   python start_backend.py
+   # 观察控制台输出的错误信息
+   ```
 
-```bash
-cd frontend
+### 前端启动失败
 
-# 开发服务器（热重载）
-npm run dev
+1. **清理缓存**
+   ```bash
+   cd frontend
+   rm -rf node_modules package-lock.json
+   npm install
+   ```
 
-# 代码检查
-npm run lint
+2. **检查 Node.js 版本**
+   ```bash
+   node --version  # 应该 >= 18
+   ```
 
-# 构建生产版本
-npm run build
-```
+3. **查看错误日志**
+   ```bash
+   npm run dev
+   # 观察控制台输出
+   ```
+
+### 知识库为空
+
+1. **检查 ChromaDB 路径**
+   ```bash
+   ls data/chroma_db/
+   # 应该有多个文件夹和一个 chroma.sqlite3 文件
+   ```
+
+2. **重新导入数据**
+   ```bash
+   python scripts/import_docs.py
+   ```
+
+3. **验证集合存在**
+   ```python
+   from core.db_manager import EduRAGDatabase
+   db = EduRAGDatabase('./data/chroma_db')
+   print(db.list_collections())
+   ```
 
 ---
 
-## 生产部署
+## 性能优化建议
 
-### 前端构建
+### 1. 启用 GPU 加速
 
-```bash
-cd frontend
-npm run build
-# 构建产物在 frontend/dist/ 目录
-```
+如果您的电脑有 NVIDIA GPU：
 
-### 后端配置
-
-修改 `config.yaml`:
 ```yaml
-server:
-  debug: false
-  cors_enabled: false  # 如果前端由 Flask 托管
+# config.yaml
+device: cuda
+embedding_device: cuda
+reranker_device: cuda
 ```
 
-### 使用 Gunicorn（Linux/macOS）
+### 2. 调整批处理大小
 
-```bash
-pip install gunicorn
+根据显存大小调整：
 
-gunicorn -w 4 -b 0.0.0.0:5000 api.app:app
+```yaml
+# config.yaml
+batch_size: 32  # 显存小则减小此值
+```
+
+### 3. 使用更快的 Embedding 模型
+
+如果速度较慢，可以考虑：
+
+```yaml
+embedding_model: BAAI/bge-small-zh-v1.5  # 更小的模型，速度更快
 ```
 
 ---
 
-## 技术支持
+## 联系与支持
 
-如遇到其他问题，请：
+如遇问题，请：
 
-1. 查看控制台日志中的错误信息
-2. 检查 [GitHub Issues](https://github.com/your-username/EduRAG/issues) 是否有类似问题
-3. 提交新的 Issue 并附上：
+1. 查看本文档的[常见问题](#常见问题)部分
+2. 检查后端和前端控制台的错误日志
+3. 提交 Issue 时附上：
    - 操作系统版本
-   - Python 版本
-   - 错误日志
+   - Python/Node.js 版本
+   - 错误日志截图
    - 复现步骤
 
 ---
 
-## 更新日志
-
-- **v1.8** (2026-06-20): 文档扁平化，支持 794 个文档智能查找
-- **v1.7** (2026-06-19): JSON 解析容错系统，一键收藏功能
-- **v1.6** (2026-06-18): 作品集模块，命题热点模块
-- **v1.5** (2026-06-17): 强化训练模块，成长日志
-
----
-
-**最后更新**: 2026-06-20
+**祝您使用愉快！** 🎉

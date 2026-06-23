@@ -53,12 +53,39 @@ def backup_database():
         
         logger.info(f"开始备份 ChromaDB: {chroma_path} -> {backup_dest}")
         
-        # 执行备份
+        # 获取所有集合并统计
+        from core.db_manager import EduRAGDatabase
+        db = current_app.config['edurag']['db']
+        collections_info = []
+        try:
+            all_collections = db.list_collections()
+            for col_name in all_collections:
+                doc_count = db.get_collection_count(col_name)
+                collections_info.append({
+                    'name': col_name,
+                    'document_count': doc_count
+                })
+            logger.info(f"将备份 {len(collections_info)} 个集合: {[c['name'] for c in collections_info]}")
+        except Exception as e:
+            logger.warning(f"无法获取集合信息: {e}")
+        
+        # 执行备份（整个chroma_db目录，包含所有集合）
         shutil.copytree(chroma_path, backup_dest)
         
         # 计算备份大小
         total_size = sum(f.stat().st_size for f in backup_dest.rglob('*') if f.is_file())
         size_mb = total_size / (1024 * 1024)
+        
+        # 保存备份元数据（记录包含的集合信息）
+        metadata_file = backup_dest / 'backup_metadata.json'
+        with open(metadata_file, 'w', encoding='utf-8') as mf:
+            json.dump({
+                'backup_name': backup_name,
+                'timestamp': datetime.now().isoformat(),
+                'collections': collections_info,
+                'total_collections': len(collections_info),
+                'size_mb': round(size_mb, 2),
+            }, mf, ensure_ascii=False, indent=2)
         
         # 清理旧备份（保留最近5个）
         old_backups = sorted(backup_root.glob("chroma_db_*"))
@@ -71,11 +98,13 @@ def backup_database():
         
         return jsonify({
             'success': True,
-            'message': f'备份成功',
+            'message': f'备份成功（包含 {len(collections_info)} 个知识库）',
             'backup_path': str(backup_dest),
             'backup_name': backup_name,
             'size_mb': round(size_mb, 2),
             'timestamp': datetime.now().isoformat(),
+            'collections': collections_info,  # 新增：列出所有备份的集合
+            'total_collections': len(collections_info),
         })
     
     except Exception as e:
@@ -111,11 +140,24 @@ def list_backups():
                 except:
                     created_at = '未知'
                 
+                # 尝试读取备份元数据（如果存在）
+                metadata_file = backup_dir / 'backup_metadata.json'
+                collections_info = []
+                if metadata_file.exists():
+                    try:
+                        with open(metadata_file, 'r', encoding='utf-8') as mf:
+                            metadata = json.load(mf)
+                            collections_info = metadata.get('collections', [])
+                    except:
+                        pass
+                
                 backups.append({
                     'name': backup_dir.name,
                     'path': str(backup_dir),
                     'size_mb': round(size_mb, 2),
                     'created_at': created_at,
+                    'collections': collections_info,  # 新增：集合信息
+                    'total_collections': len(collections_info),
                 })
         
         return jsonify({
@@ -161,6 +203,97 @@ def delete_backup(backup_name):
     except Exception as e:
         logger.error(f"删除备份失败: {e}", exc_info=True)
         return jsonify({'error': f'删除失败: {str(e)}'}), 500
+
+
+@backup_bp.route('/restore/<backup_name>', methods=['POST'])
+def restore_backup(backup_name):
+    """
+    从指定备份恢复 ChromaDB 数据库
+    
+    Args:
+        backup_name: 备份名称
+    
+    Returns:
+        恢复结果
+    """
+    try:
+        # 获取配置
+        config = current_app.config['edurag']['config']
+        db_path = config.get('chromadb', {}).get('path', './data/chroma_db')
+        
+        # 验证备份存在
+        backup_path = Path('backup') / backup_name
+        if not backup_path.exists():
+            return jsonify({'error': f'备份不存在: {backup_name}'}), 404
+        
+        # 安全检查：确保在 backup 目录下
+        if not str(backup_path.resolve()).startswith(str(Path('backup').resolve())):
+            return jsonify({'error': '非法的备份路径'}), 403
+        
+        # 验证备份包含 chroma_db 数据
+        if not (backup_path / 'chroma.sqlite3').exists():
+            return jsonify({'error': '备份文件不完整，缺少 ChromaDB 数据'}), 400
+        
+        # 读取备份元数据（如果有）
+        metadata_file = backup_path / 'backup_metadata.json'
+        collections_info = []
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, 'r', encoding='utf-8') as mf:
+                    metadata = json.load(mf)
+                    collections_info = metadata.get('collections', [])
+            except:
+                pass
+        
+        # 备份当前数据库（以防万一）
+        current_db_path = Path(db_path)
+        if current_db_path.exists():
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            old_backup_path = Path('backup') / f'auto_backup_before_restore_{timestamp}'
+            logger.info(f"恢复前自动备份当前数据库到: {old_backup_path}")
+            shutil.copytree(current_db_path, old_backup_path)
+        
+        # 清空当前数据库目录
+        if current_db_path.exists():
+            shutil.rmtree(current_db_path)
+        
+        # 创建数据库目录
+        current_db_path.mkdir(parents=True, exist_ok=True)
+        
+        # 复制备份数据到数据库目录
+        for item in backup_path.iterdir():
+            if item.is_dir():
+                dest = current_db_path / item.name
+                shutil.copytree(item, dest)
+            else:
+                dest = current_db_path / item.name
+                shutil.copy2(item, dest)
+        
+        logger.info(f"成功从备份 {backup_name} 恢复数据库")
+        
+        # 重新初始化数据库连接
+        edurag = current_app.config.get('edurag', {})
+        db = edurag.get('db')
+        if db:
+            try:
+                # 刷新数据库连接
+                db._client = None
+                db._initialize_client()
+                logger.info("数据库连接已刷新")
+            except Exception as e:
+                logger.warning(f"刷新数据库连接失败: {e}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'成功从备份 {backup_name} 恢复数据库',
+            'collections': collections_info,
+            'total_collections': len(collections_info),
+            'warning': '请重启后端服务以确保所有更改生效',
+        })
+    
+    except Exception as e:
+        logger.error(f"恢复备份失败: {e}", exc_info=True)
+        return jsonify({'error': f'恢复失败: {str(e)}'}), 500
 
 
 @backup_bp.route('/export-conversation', methods=['POST'])

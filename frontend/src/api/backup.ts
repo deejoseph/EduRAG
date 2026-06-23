@@ -17,6 +17,8 @@ export const backupDatabase = async (backupName?: string): Promise<{
   backup_name: string;
   size_mb: number;
   timestamp: string;
+  collections?: Array<{name: string; document_count: number}>;
+  total_collections?: number;
 }> => {
   const response = await api.post('/database', { backup_name: backupName });
   return response.data;
@@ -30,6 +32,8 @@ export const listBackups = async (): Promise<{
     path: string;
     size_mb: number;
     created_at: string;
+    collections?: Array<{name: string; document_count: number}>;
+    total_collections?: number;
   }>;
   total: number;
 }> => {
@@ -43,6 +47,18 @@ export const deleteBackup = async (backupName: string): Promise<{
   message: string;
 }> => {
   const response = await api.delete(`/delete/${backupName}`);
+  return response.data;
+};
+
+// 恢复备份
+export const restoreBackup = async (backupName: string): Promise<{
+  success: boolean;
+  message: string;
+  collections?: Array<{name: string; document_count: number}>;
+  total_collections?: number;
+  warning?: string;
+}> => {
+  const response = await api.post(`/restore/${backupName}`);
   return response.data;
 };
 
