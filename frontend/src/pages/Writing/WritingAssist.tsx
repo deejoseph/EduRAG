@@ -141,11 +141,31 @@ const WritingAssist: React.FC = () => {
     }
     
     try {
+      const metadata = {
+        // 传递完整的写作上下文信息
+        essay_type: useWritingStore.getState().topicType,  // 题目类型
+        grade_level: useWritingStore.getState().gradeLevel, // 学段
+        essay_style: essayStyle,  // 文体（议论文/记叙文等）
+        word_count: currentEssay.length,  // 字数
+        source: 'writing',  // 来源：引导练习
+        exported_at: new Date().toISOString(),
+      };
+      
+      console.log('[WritingAssist] ========== 导出到播客 ==========');
+      console.log('[WritingAssist] topic:', topic);
+      console.log('[WritingAssist] essay_type:', metadata.essay_type);
+      console.log('[WritingAssist] grade_level:', metadata.grade_level);
+      console.log('[WritingAssist] essay_style:', metadata.essay_style);
+      console.log('[WritingAssist] word_count:', metadata.word_count);
+      console.log('[WritingAssist] source:', metadata.source);
+      console.log('[WritingAssist] ======================================');
+      
       const response = await writingApi.exportToPodcast({
         stage: 'essay',
         topic: topic || '未知题目',
         content: generatedEssay,
         ai_model: 'qwen3:8b',
+        metadata: metadata,
       });
       message.success(`✅ 已导出到播客模块：${response.material_id}`);
     } catch (error) {

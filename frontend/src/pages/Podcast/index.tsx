@@ -80,6 +80,7 @@ const PodcastPage: React.FC = () => {
   // 音频关联弹窗
   const [audioModalVisible, setAudioModalVisible] = useState(false);
   const [selectedAudioIds, setSelectedAudioIds] = useState<string[]>([]);
+  const [audioFileList, setAudioFileList] = useState<Array<{ filename: string; size_mb: number; created_at: string }>>([]);
   
   // RSS相关状态
   const [rssModalVisible, setRssModalVisible] = useState(false);
@@ -149,6 +150,28 @@ const PodcastPage: React.FC = () => {
       const response = await writingApi.getPodcastScripts(params);
       setScriptList(response.scripts || []);
       console.log('[Podcast] 加载文案列表:', response.count, '个');
+      
+      // 【调试】打印前3个文案的元数据，检查字段是否正确
+      if (response.scripts && response.scripts.length > 0) {
+        console.log('[Podcast] ========== 文案列表元数据示例 ==========');
+        response.scripts.slice(0, 3).forEach((script: any, index: number) => {
+          console.log(`[Podcast] 文案 ${index + 1}:`, {
+            script_id: script.script_id,
+            title: script.title,
+            topic: script.topic,
+            essay_type: script.essay_type,
+            grade_level: script.grade_level,
+            essay_style: script.essay_style,
+            word_count: script.word_count,
+            source: script.source,
+            score: script.score,
+            stage: script.stage,
+            question_type: script.question_type,
+            question_name: script.question_name,
+          });
+        });
+        console.log('[Podcast] ======================================');
+      }
     } catch (error) {
       console.error('加载文案列表失败:', error);
       message.error('加载文案列表失败');
@@ -302,10 +325,19 @@ const PodcastPage: React.FC = () => {
   };
 
   // 打开音频关联弹窗
-  const handleOpenAudioModal = (scriptId: string) => {
+  const handleOpenAudioModal = async (scriptId: string) => {
     setCurrentEditScriptId(scriptId);
-    setSelectedAudioIds([]); // TODO: 加载已关联的音频ID
+    setSelectedAudioIds([]);
     setAudioModalVisible(true);
+    
+    // 加载音频文件列表
+    try {
+      const response = await writingApi.listPodcastAudioFiles();
+      setAudioFileList(response.files || []);
+    } catch (error) {
+      console.error('加载音频文件失败:', error);
+      message.error('加载音频文件失败');
+    }
   };
 
   // 保存音频关联
@@ -313,9 +345,10 @@ const PodcastPage: React.FC = () => {
     if (!currentEditScriptId) return;
     
     try {
-      // TODO: 先清除旧的关联，再添加新的
       for (const audioId of selectedAudioIds) {
-        await writingApi.addAudioAssociation(currentEditScriptId, audioId);
+        await writingApi.addAudioAssociation(currentEditScriptId, {
+          audio_id: audioId,
+        });
       }
       message.success('音频关联成功');
       setAudioModalVisible(false);
@@ -329,16 +362,20 @@ const PodcastPage: React.FC = () => {
   // 添加文案到RAG知识库
   const handleAddScriptToRag = async (scriptId: string) => {
     Modal.confirm({
-      title: '确认加入RAG知识库？',
-      content: '将该播客文案存入RAG知识库，用于后续AI生成参考',
+      title: '确认加入播客 RAG 知识库？',
+      content: '将该播客文案存入播客 RAG 知识库，用于后续生成播客文案时学习历史风格',
       okText: '确认加入',
       cancelText: '取消',
       onOk: async () => {
         try {
-          // TODO: 调用后端API将文案存入RAG
-          // await writingApi.addScriptToRag(scriptId);
-          message.success('已加入RAG知识库');
-          loadScripts(); // 刷新列表
+          const response = await writingApi.addPodcastMaterialToRag(scriptId, {
+            title: `播客文案_${scriptId}`
+          });
+          
+          if (response.success) {
+            message.success(`✅ 已存入播客 RAG 知识库，共 ${response.chunk_count} 个片段`);
+            loadScripts();
+          }
         } catch (error) {
           console.error('加入RAG失败:', error);
           message.error('加入RAG失败');
@@ -502,15 +539,26 @@ const PodcastPage: React.FC = () => {
       message.success(`成功生成播客文案（基于${response.materials_count}个素材）`);
             
       // 检查是否保存到数据库
-      console.log('[Podcast] 后端返回的 script_metadata:', response.script_metadata);
+      console.log('[Podcast] ========== 文案生成成功 ==========');
+      console.log('[Podcast] script_id:', response.script_metadata?.script_id);
+      console.log('[Podcast] title:', response.script_metadata?.title);
+      console.log('[Podcast] topic:', response.script_metadata?.topic);
+      console.log('[Podcast] essay_type:', response.script_metadata?.essay_type);
+      console.log('[Podcast] grade_level:', response.script_metadata?.grade_level);
+      console.log('[Podcast] essay_style:', response.script_metadata?.essay_style);
+      console.log('[Podcast] word_count:', response.script_metadata?.word_count);
+      console.log('[Podcast] source:', response.script_metadata?.source);
+      console.log('[Podcast] score:', response.script_metadata?.score);
+      console.log('[Podcast] ======================================');
+            
       if (response.script_metadata) {
         setCurrentScriptId(response.script_metadata.script_id);
         console.log('[Podcast] ✅ 文案已自动保存到数据库:', response.script_metadata.script_id);
-        message.success(`✅ 文案已自动保存到"我的文案"`);
+        message.success(`✅ 文案已自动保存到“我的文案”`);
       } else {
         // 后端保存失败，提示用户手动保存
         console.warn('[Podcast] ⚠️ 文案未保存到数据库（script_metadata 为 null）');
-        message.warning('⚠️ 文案生成成功，但未自动保存到数据库。请点击下方"保存到我的文案"按钮手动保存。', 5);
+        message.warning('⚠️ 文案生成成功，但未自动保存到数据库。请点击下方“保存到我的文案”按钮手动保存。', 5);
       }
       
       // 刷新文案列表（无论是否保存成功）
@@ -714,6 +762,16 @@ const PodcastPage: React.FC = () => {
       return;
     }
     
+    // 【方案A】检查是否有当前文案ID，如果没有则无法自动关联
+    if (!currentScriptId) {
+      console.warn('[Podcast] ⚠️ 没有当前文案ID，音频将无法自动关联');
+      message.warning({
+        content: '⚠️ 请先保存播客文案，再生成音频（否则无法自动关联）',
+        duration: 3,
+      });
+      return;
+    }
+    
     // 检查是否有 prompt_text（优先使用当前输入框的值，如果没有则从已保存的音频中获取）
     let finalPromptText = promptText.trim();
     
@@ -802,6 +860,22 @@ const PodcastPage: React.FC = () => {
         console.log('所有段落生成完成，完整音频URL:', response.audio_url);
       }
       
+      // 【方案A：完全自动化】每段音频生成后立即自动关联到文案
+      if (currentScriptId && response.audio_url) {
+        try {
+          const audioId = response.audio_url.split('/').pop(); // 提取文件名
+          await writingApi.addAudioAssociation(currentScriptId, {
+            audio_id: audioId,
+            segment_index: index + 1,  // 第几段
+            duration: response.duration_sec,
+          });
+          console.log(`[Podcast] ✅ 第 ${index + 1} 段音频已自动关联到文案:`, currentScriptId);
+        } catch (error) {
+          console.error(`[Podcast] ❌ 第 ${index + 1} 段音频自动关联失败:`, error);
+          // 不阻断流程，只记录错误
+        }
+      }
+      
       console.log(`第 ${index + 1} 段语音生成完成`);
       
       // 显示成功消息
@@ -884,6 +958,7 @@ const PodcastPage: React.FC = () => {
         prompt_text: finalPromptText,  // 使用最终确定的提示文本
         nfe,
         guidance_strength: guidanceStrength,
+        is_full_audio: true,  // 标记为合并音频
       });
       
       // 关闭loading提示
@@ -933,7 +1008,12 @@ const PodcastPage: React.FC = () => {
       }
       
       console.log('[批量生成] 所有段落生成完成！');
-      message.success('所有段落语音生成完成！');
+      
+      // 【方案A：完全自动化】显示最终提示
+      message.success({
+        content: `✅ 所有音频已自动生成、保存并关联到文案！`,
+        duration: 3,
+      });
       
     } catch (error) {
       // 确保关闭loading提示
@@ -1323,18 +1403,32 @@ const PodcastPage: React.FC = () => {
                 },
                 {
                   title: '题目类型',
-                  dataIndex: 'question_type',
-                  key: 'question_type',
+                  dataIndex: 'essay_type',
+                  key: 'essay_type',
                   width: 120,
                   ellipsis: true,
                   render: (text: string) => text || '-'
                 },
                 {
-                  title: '题库题目',
-                  dataIndex: 'question_name',
-                  key: 'question_name',
-                  width: 150,
+                  title: '学段',
+                  dataIndex: 'grade_level',
+                  key: 'grade_level',
+                  width: 100,
+                  render: (text: string) => text || '-'
+                },
+                {
+                  title: '题目',
+                  dataIndex: 'topic',
+                  key: 'topic',
+                  width: 200,
                   ellipsis: true,
+                  render: (text: string) => text || '-'
+                },
+                {
+                  title: '文体',
+                  dataIndex: 'essay_style',
+                  key: 'essay_style',
+                  width: 120,
                   render: (text: string) => text || '-'
                 },
                 {
@@ -1351,19 +1445,21 @@ const PodcastPage: React.FC = () => {
                   width: 120,
                   render: (_: any, record: PodcastScript) => (
                     <Space>
-                      <Badge 
-                        status="processing" 
-                        text="待关联" 
-                        // TODO: 后续根据实际音频关联状态显示
-                      />
-                      <Button 
-                        type="link" 
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => handleOpenAudioModal(record.script_id)}
-                      >
-                        关联
-                      </Button>
+                      {record.has_audio ? (
+                        <Badge status="success" text={`已关联(${record.audio_count})`} />
+                      ) : (
+                        <Badge status="default" text="待关联" />
+                      )}
+                      {!record.has_audio && (
+                        <Button 
+                          type="link" 
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={() => handleOpenAudioModal(record.script_id)}
+                        >
+                          关联
+                        </Button>
+                      )}
                     </Space>
                   )
                 },
@@ -1373,15 +1469,20 @@ const PodcastPage: React.FC = () => {
                   width: 120,
                   render: (_: any, record: PodcastScript) => (
                     <Space>
-                      <Tag color="default">未加入</Tag>
-                      // TODO: 后续根据实际RAG状态显示
-                      <Button 
-                        type="link" 
-                        size="small"
-                        onClick={() => handleAddScriptToRag(record.script_id)}
-                      >
-                        加入
-                      </Button>
+                      {record.in_rag ? (
+                        <Tag color="green">已加入</Tag>
+                      ) : (
+                        <>
+                          <Tag color="default">未加入</Tag>
+                          <Button 
+                            type="link" 
+                            size="small"
+                            onClick={() => handleAddScriptToRag(record.script_id)}
+                          >
+                            加入
+                          </Button>
+                        </>
+                      )}
                     </Space>
                   )
                 },
@@ -2313,7 +2414,7 @@ const PodcastPage: React.FC = () => {
 
       {/* 音频关联弹窗 */}
       <Modal
-        title="关联参考音频"
+        title="关联播客音频"
         open={audioModalVisible}
         onOk={handleSaveAudioAssociation}
         onCancel={() => setAudioModalVisible(false)}
@@ -2322,15 +2423,50 @@ const PodcastPage: React.FC = () => {
         width={600}
       >
         <div style={{ padding: '16px 0' }}>
-          <Text>选择要关联的参考音频（可多选）：</Text>
+          <Text>选择要关联的音频文件（可多选）：</Text>
           <div style={{ marginTop: 16 }}>
-            {/* TODO: 加载参考音频列表并显示 */}
-            <Alert
-              message="功能开发中"
-              description="这里将显示所有可用的参考音频列表，支持多选。后续会实现完整的音频选择和预览功能。"
-              type="info"
-              showIcon
-            />
+            {audioFileList.length === 0 ? (
+              <Alert
+                message="暂无音频文件"
+                description="请先生成 TTS 语音，音频文件将自动保存在 data/podcast_audio/ 目录"
+                type="info"
+                showIcon
+              />
+            ) : (
+              <List
+                size="small"
+                dataSource={audioFileList}
+                renderItem={(file) => (
+                  <List.Item
+                    onClick={() => {
+                      setSelectedAudioIds(prev => 
+                        prev.includes(file.filename)
+                          ? prev.filter(id => id !== file.filename)
+                          : [...prev, file.filename]
+                      );
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      background: selectedAudioIds.includes(file.filename) ? '#e6f4ff' : 'transparent',
+                      borderRadius: 4,
+                      padding: '8px 12px',
+                    }}
+                  >
+                    <List.Item.Meta
+                      avatar={
+                        <input
+                          type="checkbox"
+                          checked={selectedAudioIds.includes(file.filename)}
+                          readOnly
+                        />
+                      }
+                      title={file.filename}
+                      description={`${file.size_mb} MB · ${file.created_at}`}
+                    />
+                  </List.Item>
+                )}
+              />
+            )}
           </div>
         </div>
       </Modal>

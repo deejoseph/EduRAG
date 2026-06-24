@@ -739,9 +739,11 @@ def get_podcast_scripts():
         for metadata in results['metadatas']:
             script_id = metadata.get('script_id')
             
-            # 从 JSON 文件中获取最新状态和阶段，如果没有则使用 ChromaDB 中的默认值
-            latest_status = all_states.get(script_id, {}).get('status', metadata.get('status', 'draft'))
-            latest_stage = all_states.get(script_id, {}).get('stage', None)
+            # 【修复】状态从状态管理器获取，阶段优先从状态管理器获取，
+            # 如果状态管理器没有则回退到 ChromaDB 元数据
+            script_state = all_states.get(script_id, {})
+            latest_status = script_state.get('status') or metadata.get('status', 'draft')
+            latest_stage = script_state.get('stage') or metadata.get('stage') or None
             
             # 如果前端传入了status过滤，在这里进行过滤
             if status_filter and latest_status != status_filter:
@@ -757,15 +759,27 @@ def get_podcast_scripts():
                 'topic': metadata.get('topic', '未知'),
                 'version': metadata.get('version', 1),
                 'parent_id': metadata.get('parent_id'),
-                'status': latest_status,  # 使用最新状态
-                'stage': latest_stage,  # 添加阶段字段
+                'status': latest_status,
+                'stage': latest_stage,
                 'created_at': metadata.get('created_at'),
                 'updated_at': metadata.get('updated_at'),
                 'materials_count': metadata.get('materials_count', 0),
                 'model': metadata.get('model', 'unknown'),
-                # 作文相关字段(从metadata中提取)
-                'question_type': metadata.get('question_type'),  # 题目类型
-                'question_name': metadata.get('question_name')   # 题库题目名称
+                # 作文相关字段
+                'essay_type': metadata.get('essay_type', ''),
+                'grade_level': metadata.get('grade_level', ''),
+                'essay_style': metadata.get('essay_style', ''),
+                'word_count': metadata.get('word_count', 0),
+                'source': metadata.get('source', ''),
+                'practice_session_id': metadata.get('practice_session_id', ''),
+                'score': metadata.get('score', 0),
+                'question_type': metadata.get('question_type'),
+                'question_name': metadata.get('question_name'),
+                # 【新增】音频关联状态
+                'has_audio': len(script_state.get('audio_files', [])) > 0,
+                'audio_count': len(script_state.get('audio_files', [])),
+                # 【新增】RAG状态
+                'in_rag': script_state.get('in_rag', False),
             })
         
         # 按时间戳降序排序（最新的在前）
@@ -1095,6 +1109,9 @@ def generate_podcast_script():
         
         # 构建上下文
         context_parts = []
+        all_metadata = {}  # 收集所有素材的元数据
+        material_stages = []  # 收集素材的阶段
+        
         for i, mat in enumerate(materials, 1):
             stage_name = {
                 'analysis': '审题分析',
@@ -1102,6 +1119,18 @@ def generate_podcast_script():
                 'essay': '写作辅助',
                 'evaluation': '作文评估'
             }.get(mat['stage'], mat['stage'])
+            
+            # 收集素材阶段
+            if mat.get('stage'):
+                material_stages.append(mat['stage'])
+            
+            # 【修复】从所有素材中合并元数据（后面的素材填充前面的空缺）
+            if mat.get('metadata'):
+                for key, value in mat['metadata'].items():
+                    if key not in all_metadata or not all_metadata[key]:
+                        all_metadata[key] = value
+            
+            logger.info(f"素材{i} metadata keys: {list(mat.get('metadata', {}).keys())}")
             
             context_parts.append(
                 f"【{stage_name}】（题目：{mat['topic']}，模型：{mat['ai_model']}）\n"
@@ -1248,19 +1277,60 @@ def generate_podcast_script():
                         'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
                         'updated_at': time.strftime('%Y-%m-%d %H:%M:%S'),
                         'status': 'draft',  # draft/completed/archived
+                        # 添加从素材中提取的元数据
+                        'essay_type': str(all_metadata.get('essay_type', '')),
+                        'grade_level': str(all_metadata.get('grade_level', '')),
+                        'essay_style': str(all_metadata.get('essay_style', '')),
+                        'word_count': int(all_metadata.get('word_count') or 0),
+                        'source': str(all_metadata.get('source') or 'unknown'),  # writing/practice
+                        'practice_session_id': str(all_metadata.get('practice_session_id') or ''),
+                        'score': float(all_metadata.get('score') or 0),
                         'type': 'podcast_script',
                         'timestamp': timestamp  # 用于排序
                     }],
                     ids=[f'script_{script_id}']
                 )
                 logger.info(f"✅ 播客文案已保存到知识库: {script_id}")
+                logger.info(f"📋 素材元数据: {all_metadata}")
                 
-                # 返回 script_id 给前端
+                # 【修复】根据素材阶段自动设置文案阶段
+                stage_map = {
+                    'analysis': 'shenti',
+                    'outline': 'gousi',
+                    'essay': 'xiezuo',
+                    'evaluation': 'pinggu'
+                }
+                # 使用最后一个素材的阶段（流程中最新的阶段）
+                auto_stage = None
+                for s in reversed(material_stages):
+                    if s in stage_map:
+                        auto_stage = stage_map[s]
+                        break
+                
+                # 保存阶段到状态管理器
+                if auto_stage:
+                    try:
+                        from podcast.script_state_manager import get_script_state_manager
+                        state_mgr = get_script_state_manager()
+                        state_mgr.update_script_stage(script_id, auto_stage)
+                        logger.info(f"✅ 自动设置文案阶段: {auto_stage}")
+                    except Exception as e:
+                        logger.warning(f"设置文案阶段失败: {e}")
+                
+                # 【修复】返回完整的 script_metadata 给前端
                 script_metadata = {
                     'script_id': script_id,
                     'version': 1,
                     'title': f'{main_topic} - 播客文案 {time.strftime("%m-%d %H:%M")}',
-                    'created_at': time.strftime('%Y-%m-%d %H:%M:%S')
+                    'topic': main_topic,
+                    'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'essay_type': str(all_metadata.get('essay_type', '')),
+                    'grade_level': str(all_metadata.get('grade_level', '')),
+                    'essay_style': str(all_metadata.get('essay_style', '')),
+                    'word_count': int(all_metadata.get('word_count') or 0),
+                    'source': str(all_metadata.get('source') or 'unknown'),
+                    'score': float(all_metadata.get('score') or 0),
+                    'stage': auto_stage,
                 }
         except Exception as e:
             logger.error(f"❌ 保存播客文案到知识库失败: {e}", exc_info=True)
@@ -1308,6 +1378,7 @@ def generate_podcast_tts():
         prompt_text = request.form.get('prompt_text', '')  # 允许为空，稍后从JSON读取
         nfe = int(request.form.get('nfe', 18))
         guidance_strength = float(request.form.get('guidance_strength', 3.5))
+        is_full_audio = request.form.get('is_full_audio', 'false') == 'true'  # 是否为合并音频
         
         if not text:
             return error_response("必须提供 text 字段")
@@ -1379,7 +1450,7 @@ def generate_podcast_tts():
         from podcast.tts_generator import get_tts_generator
         tts_generator = get_tts_generator()
         
-        output_filename = f"podcast_{int(time.time()*1000)}.wav"
+        output_filename = f"podcast_full_{int(time.time()*1000)}.wav" if is_full_audio else f"podcast_{int(time.time()*1000)}.wav"
         audio_path = tts_generator.generate_speech(
             text=text,
             ref_audio_path=str(ref_audio_path),
@@ -1723,7 +1794,7 @@ def add_podcast_material_to_rag(material_id: str):
         
         # 初始化RAG数据库
         db = EduRAGDatabase()
-        collection_name = 'chinese_essays'
+        collection_name = 'podcast_scripts'  # 【修正】播客文案应存入专门的播客知识库
         
         # 确保集合存在
         if collection_name not in [c.name for c in db.client.list_collections()]:
@@ -1784,6 +1855,18 @@ def add_podcast_material_to_rag(material_id: str):
             import json
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(material, f, ensure_ascii=False, indent=2)
+        
+        # 【修复】同时更新文案状态管理器中的 in_rag 标记
+        try:
+            from podcast.script_state_manager import get_script_state_manager
+            state_mgr = get_script_state_manager()
+            if material_id in state_mgr.state_data.get('scripts', {}):
+                state_mgr.state_data['scripts'][material_id]['in_rag'] = True
+                state_mgr.state_data['scripts'][material_id]['rag_added_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+                state_mgr._save()
+                logger.info(f"✅ 文案状态管理器已更新 in_rag: {material_id}")
+        except Exception as e:
+            logger.warning(f"更新文案状态管理器失败: {e}")
         
         logger.info(f"✅ 播客素材已存入RAG: {material_id}, {len(chunks)}个chunks")
         
@@ -2708,4 +2791,33 @@ def ai_search_and_save():
     
     except Exception as e:
         logger.error(f"AI搜索失败: {e}")
+        return error_response(f"服务端错误: {e}", 500)
+
+
+@writing_bp.route('/podcast-audio-files', methods=['GET'])
+def list_podcast_audio_files():
+    """
+    列出所有播客音频文件（TTS生成的）
+    """
+    try:
+        audio_dir = Path('data') / 'podcast_audio'
+        if not audio_dir.exists():
+            return success_response({'files': [], 'count': 0})
+        
+        files = []
+        for f in sorted(audio_dir.glob('podcast_full_*.wav'), key=lambda x: x.stat().st_mtime, reverse=True):
+            stat = f.stat()
+            files.append({
+                'filename': f.name,
+                'size_mb': round(stat.st_size / 1024 / 1024, 2),
+                'created_at': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime)),
+            })
+        
+        return success_response({
+            'files': files,
+            'count': len(files)
+        })
+    
+    except Exception as e:
+        logger.error(f"列出播客音频文件失败: {e}")
         return error_response(f"服务端错误: {e}", 500)

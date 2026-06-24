@@ -167,8 +167,20 @@ const GrowthLogPage: React.FC = () => {
 
       {/* 提示信息 */}
       <Alert
-        message="多用户支持"
-        description="成长日志现在按用户隔离显示。切换用户可查看不同用户的训练记录。"
+        message="多用户支持（测试版）"
+        description={
+          <div>
+            <div>成长日志现在按用户隔离显示。切换用户可查看不同用户的训练记录。</div>
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              <strong>注意：</strong>
+              <ul style={{ margin: '4px 0 0 0', paddingLeft: 20 }}>
+                <li>仅统计<strong>强化训练（限时写作）</strong>的记录，引导练习的审题、提纲等环节不计入成长日志。</li>
+                <li>当前为简化方案，使用浏览器本地存储区分用户，暂未开发完整的用户注册/登录管理功能。</li>
+                <li>未来版本可能会添加完善的用户管理系统。</li>
+              </ul>
+            </div>
+          </div>
+        }
         type="info"
         showIcon
         closable

@@ -70,15 +70,25 @@ export interface PodcastScript {
   version: number;
   parent_id?: string | null;
   status: 'draft' | 'completed' | 'archived';
-  stage?: 'shenti' | 'gousi' | 'xiezuo' | 'pinggu'; // 写作阶段
+  stage?: 'shenti' | 'gousi' | 'xiezuo' | 'pinggu';
   created_at: string;
   updated_at: string;
   materials_count: number;
   model: string;
-  content?: string; // 获取单个文案时包含内容
-  // 作文相关字段(从metadata中提取)
-  question_type?: string; // 题目类型
-  question_name?: string; // 题库题目名称
+  content?: string;
+  // 作文相关字段
+  essay_type?: string;
+  grade_level?: string;
+  essay_style?: string;
+  word_count?: number;
+  source?: string;
+  score?: number;
+  question_type?: string;
+  question_name?: string;
+  // 音频和RAG状态
+  has_audio?: boolean;
+  audio_count?: number;
+  in_rag?: boolean;
 }
 
 export interface PodcastScriptsListResponse {
@@ -195,10 +205,14 @@ export const writingApi = {
     ),
 
   // 音频关联管理接口
-  addAudioAssociation: (scriptId: string, audioId: string) =>
+  addAudioAssociation: (scriptId: string, data: {
+    audio_id: string;
+    segment_index?: number;
+    duration?: number;
+  }) =>
     apiClient.post<any, { success: boolean; message: string; script_id: string; audio_id: string }>(
       `/writing/podcast-scripts/${scriptId}/audio-association`,
-      { audio_id: audioId }
+      data
     ),
 
   removeAudioAssociation: (scriptId: string, audioId: string) =>
@@ -210,6 +224,12 @@ export const writingApi = {
   getScriptAudioFiles: (scriptId: string) =>
     apiClient.get<any, { success: boolean; audio_files: Array<{ audio_id: string; filename: string; duration?: number; file_size?: number; created_at?: string }> }>(
       `/writing/podcast-scripts/${scriptId}/audio-files`
+    ),
+
+  // 列出所有播客音频文件
+  listPodcastAudioFiles: () =>
+    apiClient.get<any, { success: boolean; files: Array<{ filename: string; size_mb: number; created_at: string }>; count: number }>(
+      '/writing/podcast-audio-files'
     ),
 
   generatePodcastScript: (params: GeneratePodcastRequest) =>
@@ -229,7 +249,7 @@ export const writingApi = {
     apiClient.post<any, DuplicateScriptResponse>(`/writing/podcast-scripts/${scriptId}/duplicate`),
 
   // TTS语音生成接口（使用fetch避免axios问题）
-  generatePodcastTTS: (params: GeneratePodcastTTSRequest | { text: string; ref_audio_id: string; prompt_text: string; nfe?: number; guidance_strength?: number }, signal?: AbortSignal) => {
+  generatePodcastTTS: (params: GeneratePodcastTTSRequest | { text: string; ref_audio_id: string; prompt_text: string; nfe?: number; guidance_strength?: number; is_full_audio?: boolean }, signal?: AbortSignal) => {
     const formData = new FormData();
     formData.append('text', params.text);
     
@@ -243,6 +263,7 @@ export const writingApi = {
     formData.append('prompt_text', params.prompt_text);
     if (params.nfe !== undefined) formData.append('nfe', String(params.nfe));
     if (params.guidance_strength !== undefined) formData.append('guidance_strength', String(params.guidance_strength));
+    if ('is_full_audio' in params && params.is_full_audio) formData.append('is_full_audio', 'true');
     
     const ttsUrl = 'http://localhost:5000/writing/podcast-tts';
     console.log('[TTS API] 请求URL:', ttsUrl);

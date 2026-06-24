@@ -13,6 +13,7 @@ import {
   EditOutlined, DeleteOutlined, CheckCircleOutlined, CloudUploadOutlined
 } from '@ant-design/icons';
 import { writingApi } from '../../api/writing';
+import { useWritingStore } from '../../store/writingStore';
 
 const { Text, Paragraph } = Typography;
 const { TabPane } = Tabs;
@@ -269,6 +270,8 @@ const QuotesAndMaterialsPage: React.FC = () => {
   // 导出到播客模块
   const handleExportToPodcast = async (content: string, title: string) => {
     try {
+      // 从全局状态获取写作上下文
+      const store = useWritingStore.getState();
       await writingApi.exportToPodcast({
         stage: 'essay',
         topic: searchTopic,
@@ -277,6 +280,10 @@ const QuotesAndMaterialsPage: React.FC = () => {
         metadata: {
           title,
           generated_at: new Date().toISOString(),
+          essay_type: store.topicType || '',
+          grade_level: store.gradeLevel || '',
+          source: 'quotes_materials',
+          content_length: content.length,
         },
       });
       message.success(`✅ "${title}" 已导入播客模块`);

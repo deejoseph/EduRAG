@@ -77,6 +77,12 @@ const OutlinePhase: React.FC = () => {
         topic: topic || '未知题目',
         content: phase.ai_feedback,
         ai_model: 'qwen3:8b',
+        metadata: {
+          // 传递完整的练习上下文信息
+          source: 'practice',  // 来源：强化训练
+          practice_session_id: sessionId,  // 练习会话ID
+          exported_at: new Date().toISOString(),
+        },
       });
       message.success(`✅ 已导出到播客模块：${response.material_id}`);
     } catch (error) {

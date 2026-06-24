@@ -8,6 +8,7 @@ import { Card, Button, Space, Tag, message, Spin, Typography } from 'antd';
 import { CheckCircleOutlined, ExportOutlined, ReloadOutlined, RobotOutlined } from '@ant-design/icons';
 import type { MultiAiResult } from '../../api/writing';
 import { writingApi } from '../../api/writing';
+import { useWritingStore } from '../../store/writingStore';
 
 const { Text, Paragraph } = Typography;
 
@@ -39,14 +40,27 @@ const MultiAiResults: React.FC<MultiAiResultsProps> = ({
     setExporting((prev) => ({ ...prev, [result.ai_model]: true }));
 
     try {
+      // 【修复】从全局状态获取完整的写作上下文信息
+      const store = useWritingStore.getState();
+      const metadata: Record<string, any> = {
+        generated_at: new Date().toISOString(),
+        // 写作上下文信息
+        essay_type: store.topicType || '',
+        grade_level: store.gradeLevel || '',
+        essay_style: store.style || '',
+        word_count: store.wordCount || 0,
+        source: 'writing',
+        content_length: result.content.length,
+      };
+
+      console.log(`[MultiAiResults] 导出素材: stage=${stage}, metadata=`, metadata);
+
       const response = await writingApi.exportToPodcast({
         stage,
         topic,
         content: result.content,
         ai_model: result.ai_model,
-        metadata: {
-          generated_at: new Date().toISOString(),
-        },
+        metadata,
       });
 
       if (response.success) {

@@ -104,6 +104,16 @@ const EssayEval: React.FC = () => {
         topic: topic || '未知题目',
         content: evaluationResult,
         ai_model: 'qwen3:8b',
+        metadata: {
+          // 传递完整的写作上下文信息
+          essay_type: useWritingStore.getState().topicType,  // 题目类型
+          grade_level: useWritingStore.getState().gradeLevel, // 学段
+          word_count: essay.length,  // 字数
+          score: totalScore,  // 总分
+          evaluation_scores: scores,  // 四维评分
+          source: 'writing',  // 来源：引导练习
+          exported_at: new Date().toISOString(),
+        },
       });
       message.success(`✅ 已导出到播客模块：${response.material_id}`);
     } catch (error) {

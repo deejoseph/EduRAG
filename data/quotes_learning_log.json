@@ -34,10 +34,10 @@
   },
   "quote_0461": {
     "quote_id": "quote_0461",
-    "total_views": 2,
+    "total_views": 4,
     "total_copies": 0,
     "total_favorites": 0,
-    "last_viewed_at": "2026-06-24T02:48:56.734526",
+    "last_viewed_at": "2026-06-25T01:02:47.967706",
     "learning_sessions": [
       {
         "action": "view",
@@ -46,6 +46,14 @@
       {
         "action": "view",
         "timestamp": "2026-06-24T02:48:56.734526"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:02:47.718201"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:02:47.967706"
       }
     ]
   },
@@ -88,6 +96,227 @@
       {
         "action": "view",
         "timestamp": "2026-06-24T03:17:54.895689"
+      }
+    ]
+  },
+  "quote_0351": {
+    "quote_id": "quote_0351",
+    "total_views": 6,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-24T16:58:45.414415",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T16:16:24.937188"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T16:16:25.197847"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T16:34:50.258702"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T16:46:47.264309"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T16:46:47.326010"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T16:58:45.414415"
+      }
+    ]
+  },
+  "quote_0214": {
+    "quote_id": "quote_0214",
+    "total_views": 2,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-24T18:21:08.710288",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T18:21:08.409116"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T18:21:08.710288"
+      }
+    ]
+  },
+  "quote_0154": {
+    "quote_id": "quote_0154",
+    "total_views": 4,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-24T23:32:02.810607",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T21:55:17.525225"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T21:55:17.609334"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T23:32:02.781498"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T23:32:02.810607"
+      }
+    ]
+  },
+  "quote_0115": {
+    "quote_id": "quote_0115",
+    "total_views": 2,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-24T23:43:49.811137",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T23:43:49.550176"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T23:43:49.811137"
+      }
+    ]
+  },
+  "quote_0095": {
+    "quote_id": "quote_0095",
+    "total_views": 1,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-25T00:00:49.181529",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:00:49.181529"
+      }
+    ]
+  },
+  "quote_0326": {
+    "quote_id": "quote_0326",
+    "total_views": 2,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-25T00:35:36.814320",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:35:36.562044"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:35:36.814320"
+      }
+    ]
+  },
+  "quote_0483": {
+    "quote_id": "quote_0483",
+    "total_views": 8,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-25T00:54:15.293689",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:48:43.543371"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:48:43.809820"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:50:20.748785"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:50:20.993623"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:53:26.976752"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:53:27.348570"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:54:15.247544"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T00:54:15.293689"
+      }
+    ]
+  },
+  "quote_0251": {
+    "quote_id": "quote_0251",
+    "total_views": 8,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-25T01:21:26.560793",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:14:28.566714"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:14:28.829373"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:14:47.634577"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:14:47.927177"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:17:54.873002"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:17:55.273183"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:21:26.529899"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:21:26.560793"
+      }
+    ]
+  },
+  "quote_0010": {
+    "quote_id": "quote_0010",
+    "total_views": 2,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-25T01:24:27.794497",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:24:27.565172"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-25T01:24:27.794497"
       }
     ]
   }
