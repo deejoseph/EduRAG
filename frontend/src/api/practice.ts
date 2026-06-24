@@ -34,8 +34,10 @@ export const practiceApi = {
       `/practice/${sessionId}/save-record`, { save_to_record: save },
     ),
 
-  growthLog: () =>
-    apiClient.get<any, GrowthLogResponse>('/practice/growth-log'),
+  growthLog: (userId?: string) =>
+    apiClient.get<any, GrowthLogResponse>('/practice/growth-log', {
+      params: userId ? { user_id: userId } : {},
+    }),
 
   resetLog: () =>
     apiClient.delete<any, { success: boolean; deleted: number }>('/practice/reset-log'),

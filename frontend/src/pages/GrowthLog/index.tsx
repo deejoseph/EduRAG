@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Button, Spin } from 'antd';
+import { Card, Row, Col, Typography, Button, Spin, Select, Space, Alert } from 'antd';
 import {
   TrophyOutlined,
   RiseOutlined,
@@ -59,11 +59,16 @@ const statCards = [
 const GrowthLogPage: React.FC = () => {
   const [data, setData] = useState<GrowthLogResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string>(() => {
+    // 从 localStorage 读取用户ID，默认为 'default_user'
+    return localStorage.getItem('user_id') || 'default_user';
+  });
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await practiceApi.growthLog();
+      // 传递 user_id 参数
+      const res = await practiceApi.growthLog(userId);
       setData(res);
     } catch {
       // handled
@@ -74,7 +79,13 @@ const GrowthLogPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [userId]);  // userId 变化时重新加载
+
+  // 处理用户切换
+  const handleUserChange = (newUserId: string) => {
+    setUserId(newUserId);
+    localStorage.setItem('user_id', newUserId);
+  };
 
   if (loading) {
     return (
@@ -127,12 +138,42 @@ const GrowthLogPage: React.FC = () => {
     <div className="page-container">
       {/* 页面标题 */}
       <div style={{ marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <RiseOutlined style={{ marginRight: 8, color: '#1677ff' }} />
-          成长日志
-        </Title>
-        <Text type="secondary">记录你的每一次进步</Text>
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <div>
+            <Title level={3} style={{ margin: 0 }}>
+              <RiseOutlined style={{ marginRight: 8, color: '#1677ff' }} />
+              成长日志
+            </Title>
+            <Text type="secondary">记录你的每一次进步</Text>
+          </div>
+          
+          {/* 用户选择器 */}
+          <Space>
+            <Text strong>当前用户：</Text>
+            <Select
+              value={userId}
+              onChange={handleUserChange}
+              style={{ width: 200 }}
+              options={[
+                { label: '默认用户', value: 'default_user' },
+                { label: '学生A', value: 'student_a' },
+                { label: '学生B', value: 'student_b' },
+                { label: '学生C', value: 'student_c' },
+              ]}
+            />
+          </Space>
+        </Space>
       </div>
+
+      {/* 提示信息 */}
+      <Alert
+        message="多用户支持"
+        description="成长日志现在按用户隔离显示。切换用户可查看不同用户的训练记录。"
+        type="info"
+        showIcon
+        closable
+        style={{ marginBottom: 24 }}
+      />
 
       {/* 统计卡片 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

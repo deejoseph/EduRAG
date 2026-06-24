@@ -1,0 +1,43 @@
+{
+  "years": [
+    {
+      "year": "2026",
+      "main_url": "https://gaokao.eol.cn/e_html/gk/mfzw/2026.shtml",
+      "essays": [
+        {
+          "region": "全国I卷",
+          "title": "对词语理解的变化",
+          "url": "https://gaokao.eol.cn/zuowen/jiqiao/202606/t20260607_2741913.shtml",
+          "has_sample_essay": false
+        },
+        {
+          "region": "全国II卷",
+          "title": "关于\"体\"与\"源\"的联想与思考",
+          "url": "https://gaokao.eol.cn/zuowen/jiqiao/202606/t20260607_2741916.shtml",
+          "has_sample_essay": false
+        },
+        {
+          "region": "北京",
+          "title": "做规划与下功夫",
+          "url": "https://gaokao.eol.cn/bei_jing/dongtai/202606/t20260607_2741918.shtml",
+          "has_sample_essay": false
+        },
+        {
+          "region": "天津",
+          "title": "\"调\"",
+          "url": "https://gaokao.eol.cn/tian_jin/dongtai/202606/t20260607_2741923.shtml",
+          "has_sample_essay": false
+        },
+        {
+          "region": "上海",
+          "title": "对科技改造世界的认识和思考",
+          "url": "https://gaokao.eol.cn/shang_hai/dongtai/202606/t20260607_2741930.shtml",
+          "has_sample_essay": false
+        }
+      ]
+    }
+  ],
+  "total_years": 13,
+  "total_essays": 228,
+  "note": "完整数据由Browser Agent采集，此处仅展示2026年示例。实际应包含2013-2026所有年份的228条作文题目。"
+}

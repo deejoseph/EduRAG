@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from 'antd';
 import SideMenu from './SideMenu';
+import DailyQuote from './DailyQuote';
 
 const { Content, Sider } = Layout;
 
@@ -33,6 +34,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         }}>
           {collapsed ? 'Edu' : 'EduRAG 智能学习'}
         </div>
+        <DailyQuote collapsed={collapsed} />
         <SideMenu />
       </Sider>
       <Layout>

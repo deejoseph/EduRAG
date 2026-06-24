@@ -73,9 +73,11 @@ def start():
 
     session_id = str(uuid.uuid4())
     essay_time_limit = data.get('essay_time_limit', 45)  # 分钟
+    user_id = data.get('user_id', 'default_user')  # 用户ID，默认 default_user
 
     session = {
         'id': session_id,
+        'user_id': user_id,  # 新增：关联用户ID
         'topic': topic,
         'topic_type': data.get('topic_type', '材料作文'),
         'grade_level': data.get('grade_level', '高中'),
@@ -436,6 +438,9 @@ def reset_log():
 @practice_bp.route('/growth-log', methods=['GET'])
 def growth_log():
     """返回计入成长日志的训练汇总数据"""
+    # 获取用户ID参数
+    user_id = request.args.get('user_id', 'default_user')
+    
     _ensure_dir()
     sessions_data = []
 
@@ -446,6 +451,12 @@ def growth_log():
         try:
             with open(fpath, 'r', encoding='utf-8') as f:
                 s = json.load(f)
+            
+            # 新增：按用户过滤
+            session_user_id = s.get('user_id', 'default_user')
+            if session_user_id != user_id:
+                continue
+            
             if (not s.get('include_in_log', True)
                     or s.get('status') != 'completed'
                     or not s.get('save_to_record', True)):
@@ -457,6 +468,7 @@ def growth_log():
 
             sessions_data.append({
                 'id': s['id'],
+                'user_id': s.get('user_id', 'default_user'),  # 返回用户ID
                 'topic': s['topic'],
                 'started_at': s['started_at'],
                 'total_score': s.get('total_score'),

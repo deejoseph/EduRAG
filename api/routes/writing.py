@@ -1903,7 +1903,9 @@ def generate_podcast_rss_feed():
             return error_response("没有找到指定的播客文案", 404)
         
         # 生成RSS XML
-        rss_xml = _generate_rss_xml(results_list)
+        # 使用GitHub Pages的封面图片URL
+        cover_image_url = 'https://dee422.github.io/cover.png'
+        rss_xml = _generate_rss_xml(results_list, cover_image_url)
         
         # 生成临时下载链接（使用token）
         import hashlib
@@ -1983,12 +1985,13 @@ def download_podcast_rss():
         return error_response(f"服务端错误: {e}", 500)
 
 
-def _generate_rss_xml(script_list):
+def _generate_rss_xml(script_list, cover_image_url=None):
     """
     生成符合RSS 2.0 + iTunes播客扩展标准的XML
     
     参数：
     script_list: [(metadata, document), ...] 元组列表
+    cover_image_url: 封面图片URL（可选，默认为GitHub Pages的封面）
     
     返回：
     str: RSS XML字符串
@@ -1996,8 +1999,12 @@ def _generate_rss_xml(script_list):
     from datetime import datetime
     import html
     
+    # 使用默认或自定义封面
+    if not cover_image_url:
+        cover_image_url = 'https://dee422.github.io/cover.png'
+    
     # RSS头部
-    rss_header = '''<?xml version="1.0" encoding="UTF-8"?>
+    rss_header = f'''<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>30分钟作文实战</title>
@@ -2007,7 +2014,7 @@ def _generate_rss_xml(script_list):
     <itunes:author>EduRAG团队</itunes:author>
     <itunes:summary>《30分钟作文实战》是一档面向高中生的作文训练播客。依托EduRAG AI作文训练系统，从审题分析、构思提纲、写作辅助到写作评估，帮助害怕写作文的学生建立系统化写作方法，通过短期强化训练，实现30分钟完成高质量考场作文的目标。</itunes:summary>
     <itunes:explicit>no</itunes:explicit>
-    <itunes:image href="https://edurang.example.com/podcast-cover.png"/>
+    <itunes:image href="{cover_image_url}"/>
     <itunes:category text="Education">
       <itunes:category text="Language Learning"/>
     </itunes:category>

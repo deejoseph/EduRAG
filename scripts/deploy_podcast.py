@@ -222,6 +222,14 @@ class PodcastDeployer:
                 git_repo_path = self.project_root
                 print(f"[INFO] 推送到当前仓库")
             
+            # 复制封面图片到输出目录（如果存在）
+            cover_src = self.project_root / 'data' / '播客资料' / '封面.png'
+            if cover_src.exists():
+                cover_dst = self.output_dir / 'cover.png'
+                import shutil
+                shutil.copy2(cover_src, cover_dst)
+                print(f"[OK] 封面图片已复制到: {cover_dst}")
+            
             # 检查是否有更改
             result = subprocess.run(
                 ['git', 'status', '--porcelain'],

@@ -134,6 +134,8 @@ def create_app(config: dict = None) -> Flask:
     from api.routes.upload import upload_bp
     from api.routes.portfolio import portfolio_bp
     from api.routes.hot_topics import hot_topics_bp
+    from api.routes.backup import backup_bp
+    from api.routes.quotes import quotes_bp
 
     app.register_blueprint(writing_bp, url_prefix='/writing')
     app.register_blueprint(search_bp, url_prefix='/search')
@@ -141,6 +143,8 @@ def create_app(config: dict = None) -> Flask:
     app.register_blueprint(upload_bp, url_prefix='/upload')
     app.register_blueprint(portfolio_bp, url_prefix='/portfolio')
     app.register_blueprint(hot_topics_bp, url_prefix='/hot-topics')
+    app.register_blueprint(backup_bp, url_prefix='/backup')
+    app.register_blueprint(quotes_bp, url_prefix='/quotes')
 
     # 播客音频文件服务（静态文件）
     from flask import send_from_directory

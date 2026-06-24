@@ -1,0 +1,94 @@
+{
+  "quote_0370": {
+    "quote_id": "quote_0370",
+    "total_views": 6,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-24T02:44:14.180125",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:35:21.395431"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:35:21.721721"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:42:34.225673"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:42:34.452395"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:44:13.922384"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:44:14.180125"
+      }
+    ]
+  },
+  "quote_0461": {
+    "quote_id": "quote_0461",
+    "total_views": 2,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-24T02:48:56.734526",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:48:56.426778"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:48:56.734526"
+      }
+    ]
+  },
+  "quote_0246": {
+    "quote_id": "quote_0246",
+    "total_views": 2,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-24T02:54:05.723872",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:54:05.464879"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:54:05.723872"
+      }
+    ]
+  },
+  "quote_0550": {
+    "quote_id": "quote_0550",
+    "total_views": 4,
+    "total_copies": 0,
+    "total_favorites": 0,
+    "last_viewed_at": "2026-06-24T03:17:54.895689",
+    "learning_sessions": [
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:57:47.459034"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T02:57:47.723519"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T03:03:13.885115"
+      },
+      {
+        "action": "view",
+        "timestamp": "2026-06-24T03:17:54.895689"
+      }
+    ]
+  }
+}
